@@ -106,7 +106,7 @@
     .canvas-item img, .canvas-item video { width: 100%; height: 100%; object-fit: fill; display: block; border-radius: 6px; }
     .canvas-item audio { width: 100%; height: 100%; pointer-events: auto; display: block; }
 
-    .crop-inner { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; }
+    /* crop-inner удалён, стили больше не нужны */
 
     .resize-handle { position: absolute; width: 12px; height: 12px; background: #9147ff; border: 2px solid #fff; border-radius: 2px; z-index: 20; pointer-events: auto; }
     .resize-handle.nw { top: -6px; left: -6px; cursor: nwse-resize; }
@@ -247,7 +247,6 @@
                 <label>OBS 🔈</label>
                 <audio id="audio-obs" controls></audio>
               </div>
-              <!-- Кнопка play/pause и таймкод убраны -->
               <div id="media-preview-container" style="margin-bottom:8px;"></div>
             </div>
           </div>
@@ -334,7 +333,6 @@
           selectedBold: $("selected-item-bold"),
           selectedItalic: $("selected-item-italic"),
           selectedStrike: $("selected-item-strike"),
-          // selectedSpeed и selectedSeek удалены, так как убрали таймкод
         },
         textSettings: $("text-settings"),
         mediaSettings: $("media-settings"),
@@ -351,14 +349,13 @@
         newRoomBtn: $("new-room-btn"),
         overlayLink: $("overlay-link"),
         copyLinkBtn: $("copy-link-btn"),
-        // playPauseBtn и selectedSeek удалены
         mediaPreview: null,
         audioPreview: $("audio-preview"),
         audioObs: $("audio-obs"),
         audioPreviewBox: $("audio-preview-box"),
         audioObsBox: $("audio-obs-box"),
         jeetbotContainer: $("jeetbot-container"),
-        jeetbotPanel: document.querySelector(".jeetbot-panel")  // добавлено
+        jeetbotPanel: document.querySelector(".jeetbot-panel")
       };
 
       const STAGE_WIDTH = 1920;
@@ -560,11 +557,11 @@
         return {
           type,
           title,
-          visible: type !== 'audio' && type !== 'tts',  // аудио/TTS по умолчанию невидимы, но будут слышны
+          visible: type !== 'audio' && type !== 'tts',
           position: { ...NEW_ITEM_POSITION },
           size: { width: (type === 'audio' || type === 'tts') ? 300 : 400, height: (type === 'audio' || type === 'tts') ? 60 : 240 },
           rotation: 0,
-          crop: { top: 0, right: 0, bottom: 0, left: 0, width: 0, height: 0 },
+          // crop удалён
           volume: 1,
           playing: type === 'tts' ? true : false,
           style: { fontSize: 36, bold: false, italic: false, strike: false, color: "#ffffff" },
@@ -654,7 +651,6 @@
         
         if (type === 'tts') {
           E.jeetbotContainer.classList.remove('hidden');
-          // Исправлено: используем E.jeetbotPanel
           if (E.jeetbotPanel && !E.jeetbotPanel.querySelector('iframe')) {
             const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(JEETBOT_URL);
             const iframe = document.createElement('iframe');
@@ -711,7 +707,7 @@
         if (!url && !file) showNotification('Введите URL или выберите файл');
       }
 
-      // ================== ФУНКЦИИ РЕДАКТОРА, ОБРЕЗКИ, ОВЕРЛЕЯ И TTS ==================
+      // ================== ФУНКЦИИ РЕДАКТОРА, ОВЕРЛЕЯ И TTS (обрезка удалена) ==================
 
       function updateSelectionHandles() {
         document.querySelectorAll('.canvas-item .resize-handle, .canvas-item .rotate-handle').forEach(h => h.remove());
@@ -734,14 +730,7 @@
         }
       }
 
-      function applyCrop(el, crop) {
-        const inner = el.querySelector('.crop-inner');
-        if (!inner) return;
-        inner.style.width = (crop.width || parseFloat(el.style.width)) + 'px';
-        inner.style.height = (crop.height || parseFloat(el.style.height)) + 'px';
-        inner.style.left = -(crop.left || 0) + 'px';
-        inner.style.top = -(crop.top || 0) + 'px';
-      }
+      // applyCrop полностью удалена
 
       function buildCanvasItem(id, item) {
         const el = document.createElement('div');
@@ -756,13 +745,14 @@
         el.style.height = (item.size?.height || 240) + 'px';
         el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
 
-        const cropInner = document.createElement('div');
-        cropInner.className = 'crop-inner';
-
+        // Нет crop-inner, вставляем напрямую
         let inner;
         if (item.type === 'image') {
           inner = document.createElement('img');
           inner.src = item.url;
+          inner.style.width = '100%';
+          inner.style.height = '100%';
+          inner.style.objectFit = 'fill';
           inner.onerror = () => {
             inner.style.display = 'none';
             const broken = document.createElement('div');
@@ -776,6 +766,8 @@
           inner.loop = true;
           inner.muted = false;
           inner.volume = item.volume || 1;
+          inner.style.width = '100%';
+          inner.style.height = '100%';
           if (item.playing) inner.play();
         } else if (item.type === 'audio' || item.type === 'tts') {
           inner = document.createElement('audio');
@@ -786,6 +778,8 @@
           inner.muted = false;
           inner.volume = item.volume || 1;
           inner.preload = 'auto';
+          inner.style.width = '100%';
+          inner.style.height = '100%';
           if (item.playing) {
             inner.autoplay = true;
             inner.load();
@@ -794,9 +788,11 @@
         } else if (item.type === 'youtube') {
           inner = document.createElement('iframe');
           inner.src = item.url;
-          inner.frameBorder="0";
+          inner.frameBorder = "0";
           inner.setAttribute('allowfullscreen', 'true');
           inner.id = `youtube-${id}`;
+          inner.style.width = '100%';
+          inner.style.height = '100%';
         } else if (item.type === 'text') {
           inner = document.createElement('div');
           inner.className = 'overlay-text';
@@ -807,9 +803,7 @@
           inner.style.fontStyle = item.style?.italic ? 'italic' : 'normal';
           inner.style.textDecoration = item.style?.strike ? 'line-through' : 'none';
         }
-        cropInner.appendChild(inner);
-        el.appendChild(cropInner);
-        if (item.crop && (item.crop.width || item.crop.height)) applyCrop(el, item.crop);
+        el.appendChild(inner);
         el.addEventListener('pointerdown', canvasPointerDown);
         return el;
       }
@@ -842,24 +836,22 @@
             el.style.height = (item.size?.height || 240) + 'px';
             el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
             el.style.display = item.visible !== false ? 'flex' : 'none';
-            const cropInner = el.querySelector('.crop-inner');
-            if (cropInner) {
-              if (item.crop && (item.crop.width || item.crop.height)) {
-                applyCrop(el, item.crop);
-              } else {
-                cropInner.style.width = '100%';
-                cropInner.style.height = '100%';
-                cropInner.style.left = '0px';
-                cropInner.style.top = '0px';
+            // Нет crop-inner, просто обновляем src при необходимости
+            const inner = el.querySelector('img, video, audio, iframe, .overlay-text');
+            if (inner) {
+              if (inner.tagName !== 'IFRAME' && inner.tagName !== 'DIV' && inner.src !== item.url) {
+                inner.src = item.url;
+                if (inner.tagName === 'AUDIO' || inner.tagName === 'VIDEO') inner.load();
               }
-            }
-            const inner = cropInner?.firstChild || el.querySelector('img, video, audio, iframe');
-            if (inner && inner.src !== item.url && inner.tagName !== 'IFRAME') {
-              inner.src = item.url;
-              if (inner.tagName === 'AUDIO' || inner.tagName === 'VIDEO') inner.load();
-            }
-            if (item.type === 'tts' && item.playing && inner && inner.tagName === 'AUDIO') {
-              inner.play().catch(() => {});
+              if (item.type === 'tts' && item.playing && inner.tagName === 'AUDIO') {
+                inner.play().catch(() => {});
+              }
+              if (item.type === 'text' && inner.classList.contains('overlay-text')) {
+                inner.textContent = item.text;
+                inner.style.fontSize = (item.style?.fontSize||36)+'px';
+                inner.style.color = item.style?.color||'#fff';
+                // ... можно обновить и другие стили при необходимости
+              }
             }
           }
         });
@@ -947,42 +939,22 @@
         if (!id) return;
         e.stopPropagation();
         const coords = getCanvasCoords(e);
-        const item = items[id];
         const origW = parseFloat(el.style.width);
         const origH = parseFloat(el.style.height);
         resizeState = {
           id, el, dir: direction,
           startX: coords.x, startY: coords.y,
           origW, origH,
-          origLeft: parseFloat(el.style.left), origTop: parseFloat(el.style.top),
-          cropMode: e.altKey,
-          origCrop: { ...(item?.crop || { top: 0, right: 0, bottom: 0, left: 0, width: origW, height: origH }) }
+          origLeft: parseFloat(el.style.left), origTop: parseFloat(el.style.top)
+          // cropMode удалён
         };
         if (e.pointerId !== undefined) el.setPointerCapture(e.pointerId);
         window.addEventListener('pointermove', resizeMove);
         window.addEventListener('pointerup', resizeEnd, { once: true });
 
-        if (e.altKey) {
-          el.style.setProperty('border-style', 'dashed', 'important');
-          el.style.setProperty('border-color', '#9147ff', 'important');
-          const cropInner = el.querySelector('.crop-inner');
-          if (cropInner) {
-            cropInner.style.width = origW + 'px';
-            cropInner.style.height = origH + 'px';
-            cropInner.style.left = '0px';
-            cropInner.style.top = '0px';
-          }
-        } else {
-          el.style.borderStyle = '';
-          el.style.borderColor = '';
-          const cropInner = el.querySelector('.crop-inner');
-          if (cropInner) {
-            cropInner.style.width = '100%';
-            cropInner.style.height = '100%';
-            cropInner.style.left = '0px';
-            cropInner.style.top = '0px';
-          }
-        }
+        // Больше не меняем border при Alt
+        el.style.borderStyle = '';
+        el.style.borderColor = '';
       }
 
       function resizeMove(e) {
@@ -1005,81 +977,38 @@
         if (dir.includes('s')) newH = resizeState.origH + dy;
         if (dir.includes('n')) newH = resizeState.origH - dy;
 
-        if (resizeState.cropMode) {
-          newW = Math.max(20, newW);
-          newH = Math.max(20, newH);
-          let crop = { ...resizeState.origCrop };
-          if (dir.includes('w')) {
-            crop.left = resizeState.origCrop.left + (resizeState.origW - newW);
-            newLeft = resizeState.origLeft + (resizeState.origW - newW);
-          } else if (dir.includes('e')) {
-            crop.right = resizeState.origCrop.right + (resizeState.origW - newW);
+        // Всегда обычный ресайз (без crop)
+        if (!e.shiftKey) {
+          const origRatio = resizeState.origW / resizeState.origH;
+          if (dir === 'e' || dir === 'w') { newH = newW / origRatio; }
+          else if (dir === 'n' || dir === 's') { newW = newH * origRatio; }
+          else {
+            const dw = Math.abs(newW - resizeState.origW);
+            const dh = Math.abs(newH - resizeState.origH);
+            if (dw > dh) { newH = newW / origRatio; }
+            else { newW = newH * origRatio; }
           }
-          if (dir.includes('n')) {
-            crop.top = resizeState.origCrop.top + (resizeState.origH - newH);
-            newTop = resizeState.origTop + (resizeState.origH - newH);
-          } else if (dir.includes('s')) {
-            crop.bottom = resizeState.origCrop.bottom + (resizeState.origH - newH);
-          }
-          crop.left = Math.max(0, crop.left);
-          crop.right = Math.max(0, crop.right);
-          crop.top = Math.max(0, crop.top);
-          crop.bottom = Math.max(0, crop.bottom);
-          crop.width = resizeState.origW;
-          crop.height = resizeState.origH;
+        }
+        newW = Math.max(20, newW);
+        newH = Math.max(20, newH);
+        if (fixedLeft) { newLeft = resizeState.origLeft + (newW - resizeState.origW) / 2; }
+        else if (fixedRight) { newLeft = resizeState.origLeft - (newW - resizeState.origW) / 2; }
+        if (fixedTop) { newTop = resizeState.origTop + (newH - resizeState.origH) / 2; }
+        else if (fixedBottom) { newTop = resizeState.origTop - (newH - resizeState.origH) / 2; }
 
-          resizeState.el.style.width = newW + 'px';
-          resizeState.el.style.height = newH + 'px';
-          resizeState.el.style.left = newLeft + 'px';
-          resizeState.el.style.top = newTop + 'px';
-          applyCrop(resizeState.el, crop);
+        resizeState.el.style.width = newW + 'px';
+        resizeState.el.style.height = newH + 'px';
+        resizeState.el.style.left = newLeft + 'px';
+        resizeState.el.style.top = newTop + 'px';
 
-          const item = items[resizeState.id];
-          if (item) {
-            item.size = { width: newW, height: newH };
-            item.position = { left: newLeft - OFFSET_X, top: newTop - OFFSET_Y };
-            item.crop = crop;
-            update(ref(db, `overlay/rooms/${activeRoomId}/items/${resizeState.id}`), {
-              size: item.size,
-              position: item.position,
-              crop: item.crop
-            });
-          }
-          resizeState.newCrop = crop;
-        } else {
-          if (!e.shiftKey) {
-            const origRatio = resizeState.origW / resizeState.origH;
-            if (dir === 'e' || dir === 'w') { newH = newW / origRatio; }
-            else if (dir === 'n' || dir === 's') { newW = newH * origRatio; }
-            else {
-              const dw = Math.abs(newW - resizeState.origW);
-              const dh = Math.abs(newH - resizeState.origH);
-              if (dw > dh) { newH = newW / origRatio; }
-              else { newW = newH * origRatio; }
-            }
-          }
-          newW = Math.max(20, newW);
-          newH = Math.max(20, newH);
-          if (fixedLeft) { newLeft = resizeState.origLeft + (newW - resizeState.origW) / 2; }
-          else if (fixedRight) { newLeft = resizeState.origLeft - (newW - resizeState.origW) / 2; }
-          if (fixedTop) { newTop = resizeState.origTop + (newH - resizeState.origH) / 2; }
-          else if (fixedBottom) { newTop = resizeState.origTop - (newH - resizeState.origH) / 2; }
-          resizeState.el.style.width = newW + 'px';
-          resizeState.el.style.height = newH + 'px';
-          resizeState.el.style.left = newLeft + 'px';
-          resizeState.el.style.top = newTop + 'px';
-          const item = items[resizeState.id];
-          if (item) {
-            item.size = { width: newW, height: newH };
-            item.position = { left: newLeft - OFFSET_X, top: newTop - OFFSET_Y };
-            item.crop = { top: 0, right: 0, bottom: 0, left: 0, width: newW, height: newH };
-            applyCrop(resizeState.el, item.crop);
-            update(ref(db, `overlay/rooms/${activeRoomId}/items/${resizeState.id}`), {
-              size: item.size,
-              position: item.position,
-              crop: item.crop
-            });
-          }
+        const item = items[resizeState.id];
+        if (item) {
+          item.size = { width: newW, height: newH };
+          item.position = { left: newLeft - OFFSET_X, top: newTop - OFFSET_Y };
+          update(ref(db, `overlay/rooms/${activeRoomId}/items/${resizeState.id}`), {
+            size: item.size,
+            position: item.position
+          });
         }
       }
 
@@ -1168,7 +1097,6 @@
           E.audioObsBox.classList.remove('hidden');
           E.audioPreview.src = item.url;
           E.audioObs.src = item.url;
-          // таймкод больше не показываем
           E.audioObs.load();
           E.audioPreview.load();
           if (item.playing) {
@@ -1198,17 +1126,13 @@
               youtubePlayer = new YT.Player(`youtube-${id}`, {
                 events: {
                   onReady: () => { youtubeReady = true; },
-                  onStateChange: (e) => {
-                    // Больше не меняем кнопку play-pause, так как она удалена
-                  }
+                  onStateChange: (e) => { /* можно добавить индикацию, но кнопки play/pause нет */ }
                 }
               });
             }
           })();
         }
       }
-
-      // Удалён обработчик on(E.playPauseBtn, 'click', ...)
 
       async function handleSaveItem() {
         if (!selectedItemId) return;
@@ -1232,11 +1156,9 @@
             strike: E.fields.selectedStrike?.checked || false
           };
         }
-        // Для видео/аудио/tts сохраняем только playbackRate (таймкод не трогаем)
         if (item.type === 'video' || item.type === 'audio' || item.type === 'tts') {
           upd.media = {
             playbackRate: Number(E.fields.selectedSpeed?.value) || 1
-            // currentTime удалён
           };
         }
         if (item.type === 'youtube') {
@@ -1245,7 +1167,6 @@
           };
           if (youtubePlayer && youtubeReady) {
             youtubePlayer.setVolume(upd.volume * 100);
-            // seek больше не делаем
           }
         }
         await update(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}`), upd);
@@ -1298,13 +1219,11 @@
         if (!E.stageElement) return;
         E.stageElement.innerHTML = "";
         Object.entries(items).forEach(([id, item]) => {
-          // Пропускаем только невидимые элементы, кроме audio/tts – они должны быть слышны всегда
           if (!item) return;
           if (!item.visible && item.type !== 'audio' && item.type !== 'tts') return;
 
           const el = document.createElement("div");
           el.className = "overlay-item";
-          // audio-hidden больше не добавляем
           el.dataset.id = id;
           el.style.left = ((item.position?.left || 0) / STAGE_WIDTH * 100) + '%';
           el.style.top = ((item.position?.top || 0) / STAGE_HEIGHT * 100) + '%';
@@ -1313,7 +1232,6 @@
           el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
           el.style.overflow = 'hidden';
 
-          // Если аудио/TTS невидимы, делаем их прозрачными и минимального размера, чтобы звук шёл
           if ((item.type === 'audio' || item.type === 'tts') && !item.visible) {
             el.style.opacity = '0';
             el.style.pointerEvents = 'none';
@@ -1325,15 +1243,10 @@
           if (item.type === 'image') {
             inner = document.createElement('img');
             inner.src = item.url;
-            if (item.crop && (item.crop.width || item.crop.height)) {
-              const cropInner = document.createElement('div');
-              cropInner.className = 'crop-inner';
-              cropInner.appendChild(inner);
-              el.appendChild(cropInner);
-              applyCrop(el, item.crop);
-            } else {
-              el.appendChild(inner);
-            }
+            inner.style.width = '100%';
+            inner.style.height = '100%';
+            inner.style.objectFit = 'fill';
+            el.appendChild(inner);
           } else if (item.type === 'video') {
             inner = document.createElement('video');
             inner.src = item.url;
@@ -1341,16 +1254,10 @@
             inner.loop = true;
             inner.muted = false;
             inner.volume = item.volume || 1;
+            inner.style.width = '100%';
+            inner.style.height = '100%';
             if (item.playing) inner.play();
-            if (item.crop && (item.crop.width || item.crop.height)) {
-              const cropInner = document.createElement('div');
-              cropInner.className = 'crop-inner';
-              cropInner.appendChild(inner);
-              el.appendChild(cropInner);
-              applyCrop(el, item.crop);
-            } else {
-              el.appendChild(inner);
-            }
+            el.appendChild(inner);
           } else if (item.type === 'audio' || item.type === 'tts') {
             inner = document.createElement('audio');
             inner.src = item.url;
@@ -1361,7 +1268,6 @@
             inner.volume = item.volume || 1;
             inner.preload = 'auto';
             el.appendChild(inner);
-            // Запускаем воспроизведение, если нужно (с обходом автоплея)
             if (item.playing) {
               inner.muted = true;
               inner.play().then(() => { inner.muted = false; }).catch(() => {});
@@ -1369,7 +1275,9 @@
           } else if (item.type === 'youtube') {
             inner = document.createElement('iframe');
             inner.src = item.url;
-            inner.frameBorder="0";
+            inner.frameBorder = "0";
+            inner.style.width = '100%';
+            inner.style.height = '100%';
             el.appendChild(inner);
           } else if (item.type === 'text') {
             inner = document.createElement('div');
