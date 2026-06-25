@@ -159,6 +159,17 @@
     #dnd-notification.show { opacity: 1; }
 
     .broken-image { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(255,0,0,0.2); color: #fff; font-size: 14px; border-radius: 6px; }
+
+    /* Модальное окно */
+    #voices-modal {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7); z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #voices-modal .modal-content {
+      background: #1a1a1a; border: 1px solid #333; border-radius: 12px;
+      padding: 20px; width: 400px; max-height: 80vh; overflow-y: auto;
+    }
   </style>
 </head>
 <body>
@@ -184,8 +195,13 @@
           </label>
           <label id="label-new-url">URL файла или YouTube <input type="text" id="new-item-url" placeholder="https://..." /></label>
           <label id="label-new-text" class="hidden">Текст <textarea id="new-text-content" placeholder="Введи текст"></textarea></label>
-          <label id="label-new-voice" class="hidden">Голос (voice_id)
-            <input type="text" id="new-item-voice" placeholder="alex" />
+          <label id="label-new-voice" class="hidden">Голос
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <select id="new-item-voice" style="flex: 1;">
+                <option value="">-- Без голоса (alex) --</option>
+              </select>
+              <button type="button" id="manage-voices-btn" style="width: auto; padding: 6px 10px; font-size: 13px;">Управление</button>
+            </div>
           </label>
           <label>Файл для загрузки</label>
           <div class="file-upload-wrapper">
@@ -198,6 +214,21 @@
           <h2>Элементы оверлея</h2>
           <div id="item-list"></div>
         </section>
+      </div>
+      <!-- Модальное окно управления голосами -->
+      <div id="voices-modal" class="hidden" style="display: none;">
+        <div class="modal-content">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="margin: 0;">Управление голосами</h3>
+            <button id="close-voices-modal" style="width: auto; padding: 4px 8px; background: transparent; border: 1px solid #555; color: #fff; border-radius: 6px;">✖️</button>
+          </div>
+          <div style="margin-bottom: 12px; display: flex; gap: 6px;">
+            <input type="text" id="new-voice-name" placeholder="Название голоса" style="flex: 1;" />
+            <input type="text" id="new-voice-model-id" placeholder="modelId" style="flex: 2;" />
+            <button id="add-voice-btn" style="width: auto; padding: 6px 12px;">Добавить</button>
+          </div>
+          <div id="voices-list" style="max-height: 300px; overflow-y: auto;"></div>
+        </div>
       </div>
       <div id="item-editor" class="hidden">
         <div class="editor-header">
@@ -267,7 +298,6 @@
       const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4YnBxeHZlZ2V5d2RheXRhcWdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTAwMjgsImV4cCI6MjA5NzM2NjAyOH0.PfSsQupiA7mmWF4mjjaZ86Prs2oHZ5A5-mvG2HenEDo";
 
       const SECRET = "meowlolxdjessew1lliams";
-      // Функция Fish Audio TTS (jeetbot-proxy уже работает)
       const SUPABASE_FUNCTION_URL = SUPABASE_URL + "/functions/v1/jeetbot-proxy";
 
       const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js");
@@ -299,12 +329,12 @@
         itemEditor: $("item-editor"),
         labelNewText: $("label-new-text"),
         labelNewUrl: $("label-new-url"),
-        labelNewVoice: $("label-new-voice"), // поле голоса
+        labelNewVoice: $("label-new-voice"),
         fields: {
           type: $("new-item-type"),
           url: $("new-item-url"),
           text: $("new-text-content"),
-          voice: $("new-item-voice"), // голос
+          voice: $("new-item-voice"), // теперь это select
           file: $("new-item-file"),
           selectedVisible: $("selected-item-visible"),
           selectedLeft: $("selected-item-left"),
@@ -339,6 +369,14 @@
         audioObs: $("audio-obs"),
         audioPreviewBox: $("audio-preview-box"),
         audioObsBox: $("audio-obs-box"),
+        // новые элементы для управления голосами
+        manageVoicesBtn: $("manage-voices-btn"),
+        voicesModal: $("voices-modal"),
+        closeVoicesModal: $("close-voices-modal"),
+        newVoiceName: $("new-voice-name"),
+        newVoiceModelId: $("new-voice-model-id"),
+        addVoiceBtn: $("add-voice-btn"),
+        voicesList: $("voices-list"),
       };
 
       let obsAudioHandlers = { play: null, pause: null, ended: null };
@@ -398,7 +436,71 @@
       let urlCounter = 0;
 
       const BUCKET_NAME = 'overlay';
-            // Горячие клавиши J+C и O+C
+      const voicesRef = ref(db, "overlay/voices"); // коллекция голосов
+
+      // ============ ГОЛОСА (VOICES) ============
+      function loadVoices() {
+        onValue(voicesRef, (snap) => {
+          const voices = snap.val() || {};
+          const select = E.fields.voice;
+          if (!select) return;
+
+          const currentVal = select.value;
+          select.innerHTML = '<option value="">-- Без голоса (alex) --</option>';
+
+          Object.entries(voices).forEach(([id, v]) => {
+            const opt = document.createElement('option');
+            opt.value = v.modelId;
+            opt.textContent = v.name;
+            select.appendChild(opt);
+          });
+          select.value = currentVal;
+
+          // Обновляем список в модалке
+          if (E.voicesList) {
+            E.voicesList.innerHTML = '';
+            Object.entries(voices).forEach(([id, v]) => {
+              const div = document.createElement('div');
+              div.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;';
+              div.innerHTML = `<span>${v.name} (${v.modelId})</span>
+                <button class="delete-voice danger" data-id="${id}" style="width:auto; padding:4px 8px; font-size:12px;">Удалить</button>`;
+              div.querySelector('.delete-voice').onclick = (e) => {
+                e.stopPropagation();
+                remove(ref(db, `overlay/voices/${id}`));
+              };
+              E.voicesList.appendChild(div);
+            });
+          }
+        });
+      }
+
+      // Вызов при старте
+      loadVoices();
+
+      // Открытие/закрытие модалки
+      on(E.manageVoicesBtn, 'click', () => {
+        E.voicesModal.style.display = 'flex';
+        E.voicesModal.classList.remove('hidden');
+      });
+      on(E.closeVoicesModal, 'click', () => {
+        E.voicesModal.style.display = 'none';
+        E.voicesModal.classList.add('hidden');
+      });
+
+      // Добавление голоса
+      on(E.addVoiceBtn, 'click', async () => {
+        const name = E.newVoiceName.value.trim();
+        const modelId = E.newVoiceModelId.value.trim();
+        if (!name || !modelId) {
+          showNotification('❌ Заполни название и modelId');
+          return;
+        }
+        await push(voicesRef, { name, modelId });
+        E.newVoiceName.value = '';
+        E.newVoiceModelId.value = '';
+        showNotification('✅ Голос добавлен');
+      });
+      // Горячие клавиши J+C и O+C
       let jPressed = false, cPressed = false, oPressed = false;
       document.addEventListener('keydown', (e) => {
         if (e.key === 'j' || e.key === 'J') jPressed = true;
@@ -643,7 +745,7 @@
             showNotification('❌ Введите текст для озвучки');
             return;
           }
-          const voice = E.fields.voice?.value?.trim() || 'alex';
+          const voice = E.fields.voice?.value || ''; // modelId или пусто
           const url = `${SUPABASE_FUNCTION_URL}?text=${encodeURIComponent(text)}&voice=${encodeURIComponent(voice)}`;
           const res = await fetch(url);
           if (!res.ok) throw new Error(`Ошибка TTS: ${res.status}`);
@@ -670,7 +772,6 @@
         const allItems = items || {};
         for (const [id, item] of Object.entries(allItems)) {
           if (item?.type === 'tts') {
-            // Удаляем файл из Storage, если есть путь
             if (item.storagePath) {
               try {
                 await supabase.storage.from(BUCKET_NAME).remove([item.storagePath]);
