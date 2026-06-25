@@ -23,7 +23,8 @@
         <input id="obs-link" type="text" readonly />
         <button id="copy-obs-link">Копировать ссылку для OBS</button>
       </div>
-      <a class="button" href="obs_overlay.html?mode=control" target="_blank">Панель управления</a>
+      <!-- Вот здесь исправлено: ссылка на overlay-panel.html -->
+      <a class="button" href="overlay-panel.html?mode=control" target="_blank">Панель управления</a>
     </div>
     <p class="muted">Можно также открыть эти ссылки напрямую в OBS Browser Source.</p>
   </div>
@@ -31,7 +32,8 @@
     (function(){
       const input = document.getElementById('obs-link');
       const copyBtn = document.getElementById('copy-obs-link');
-      const obsUrl = new URL('obs_overlay.html?mode=overlay', location.href).href;
+      // Формируем ссылку для оверлея (overlay-panel.html?mode=overlay)
+      const obsUrl = new URL('overlay-panel.html?mode=overlay', location.href).href;
       input.value = obsUrl;
       copyBtn.addEventListener('click', async () => {
         try {
