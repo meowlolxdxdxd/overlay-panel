@@ -32,6 +32,7 @@
     .overlay-item { position: absolute; touch-action: none; user-select: none; cursor: grab; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; overflow: hidden; }
     .overlay-item.dragging { cursor: grabbing; }
     .overlay-item img, .overlay-item iframe, .overlay-item video { width: 100%; height: 100%; object-fit: fill; display: block; border-radius: 10px; pointer-events: none; }
+    /* audio-hidden больше не используется, оставим на всякий случай */
     .overlay-item.audio-hidden { display: none; }
     .overlay-item audio { width: 100%; height: 100%; pointer-events: auto; display: block; }
     .overlay-text { white-space: pre-wrap; word-break: break-word; padding: 0; border-radius: 0; background: transparent; min-width: 0; min-height: 0; box-sizing: border-box; display: inline-block; }
@@ -162,7 +163,6 @@
 
     .broken-image { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(255,0,0,0.2); color: #fff; font-size: 14px; border-radius: 6px; }
 
-    /* Стили для TTS панели */
     #jeetbot-container {
       display: flex; gap: 12px; margin-top: 12px;
     }
@@ -247,10 +247,7 @@
                 <label>OBS 🔈</label>
                 <audio id="audio-obs" controls></audio>
               </div>
-              <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
-                <button id="play-pause-btn" style="width:auto; padding:4px 10px;">▶️</button>
-                <label>Таймкод (сек) <input type="number" id="selected-item-seek" min="0" step="0.1" style="width:80px;" /></label>
-              </div>
+              <!-- Кнопка play/pause и таймкод убраны -->
               <div id="media-preview-container" style="margin-bottom:8px;"></div>
             </div>
           </div>
@@ -271,7 +268,7 @@
     </div>
   </div>
   <div id="dnd-notification"></div>
-    <script type="module">
+  <script type="module">
     (async () => {
       if (document.readyState === 'loading') await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
 
@@ -337,9 +334,7 @@
           selectedBold: $("selected-item-bold"),
           selectedItalic: $("selected-item-italic"),
           selectedStrike: $("selected-item-strike"),
-          selectedSpeed: $("selected-item-speed"),
-          selectedSeek: $("selected-item-seek"),
-          selectedVolume: $("selected-item-volume")
+          // selectedSpeed и selectedSeek удалены, так как убрали таймкод
         },
         textSettings: $("text-settings"),
         mediaSettings: $("media-settings"),
@@ -356,14 +351,14 @@
         newRoomBtn: $("new-room-btn"),
         overlayLink: $("overlay-link"),
         copyLinkBtn: $("copy-link-btn"),
-        playPauseBtn: $("play-pause-btn"),
+        // playPauseBtn и selectedSeek удалены
         mediaPreview: null,
         audioPreview: $("audio-preview"),
         audioObs: $("audio-obs"),
         audioPreviewBox: $("audio-preview-box"),
         audioObsBox: $("audio-obs-box"),
-        selectedSeek: $("selected-item-seek"),
-        jeetbotContainer: $("jeetbot-container")
+        jeetbotContainer: $("jeetbot-container"),
+        jeetbotPanel: document.querySelector(".jeetbot-panel")  // добавлено
       };
 
       const STAGE_WIDTH = 1920;
@@ -565,7 +560,7 @@
         return {
           type,
           title,
-          visible: type !== 'audio' && type !== 'tts',
+          visible: type !== 'audio' && type !== 'tts',  // аудио/TTS по умолчанию невидимы, но будут слышны
           position: { ...NEW_ITEM_POSITION },
           size: { width: (type === 'audio' || type === 'tts') ? 300 : 400, height: (type === 'audio' || type === 'tts') ? 60 : 240 },
           rotation: 0,
@@ -659,14 +654,14 @@
         
         if (type === 'tts') {
           E.jeetbotContainer.classList.remove('hidden');
-          const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(JEETBOT_URL);
-if (jeetbotPanel && !jeetbotPanel.querySelector('iframe')) {
-  const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(JEETBOT_URL);
-  const iframe = document.createElement('iframe');
-  iframe.src = proxyUrl;
-  iframe.setAttribute('allow', 'autoplay');
-  jeetbotPanel.appendChild(iframe);
-}
+          // Исправлено: используем E.jeetbotPanel
+          if (E.jeetbotPanel && !E.jeetbotPanel.querySelector('iframe')) {
+            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(JEETBOT_URL);
+            const iframe = document.createElement('iframe');
+            iframe.src = proxyUrl;
+            iframe.setAttribute('allow', 'autoplay');
+            E.jeetbotPanel.appendChild(iframe);
+          }
         } else {
           E.jeetbotContainer.classList.add('hidden');
         }
@@ -715,7 +710,8 @@ if (jeetbotPanel && !jeetbotPanel.querySelector('iframe')) {
         }
         if (!url && !file) showNotification('Введите URL или выберите файл');
       }
-            // ================== ФУНКЦИИ РЕДАКТОРА, ОБРЕЗКИ, ОВЕРЛЕЯ И TTS ==================
+
+      // ================== ФУНКЦИИ РЕДАКТОРА, ОБРЕЗКИ, ОВЕРЛЕЯ И TTS ==================
 
       function updateSelectionHandles() {
         document.querySelectorAll('.canvas-item .resize-handle, .canvas-item .rotate-handle').forEach(h => h.remove());
@@ -1172,7 +1168,7 @@ if (jeetbotPanel && !jeetbotPanel.querySelector('iframe')) {
           E.audioObsBox.classList.remove('hidden');
           E.audioPreview.src = item.url;
           E.audioObs.src = item.url;
-          E.selectedSeek.value = item.media?.currentTime || 0;
+          // таймкод больше не показываем
           E.audioObs.load();
           E.audioPreview.load();
           if (item.playing) {
@@ -1203,7 +1199,7 @@ if (jeetbotPanel && !jeetbotPanel.querySelector('iframe')) {
                 events: {
                   onReady: () => { youtubeReady = true; },
                   onStateChange: (e) => {
-                    if (E.playPauseBtn) E.playPauseBtn.textContent = e.data === 1 ? '⏸️' : '▶️';
+                    // Больше не меняем кнопку play-pause, так как она удалена
                   }
                 }
               });
@@ -1212,39 +1208,7 @@ if (jeetbotPanel && !jeetbotPanel.querySelector('iframe')) {
         }
       }
 
-      on(E.playPauseBtn, 'click', async () => {
-        if (!selectedItemId || !itemsRef) return;
-        const item = items[selectedItemId];
-        if (!item) return;
-
-        if (item.type === 'youtube') {
-          if (youtubePlayer && youtubeReady) {
-            if (youtubePlayer.getPlayerState() === 1) {
-              youtubePlayer.pauseVideo();
-              E.playPauseBtn.textContent = '▶️';
-            } else {
-              youtubePlayer.playVideo();
-              E.playPauseBtn.textContent = '⏸️';
-            }
-          }
-          return;
-        }
-
-        const mediaEl = E.mediaPreview?.querySelector('video, audio');
-        if (mediaEl) {
-          if (mediaEl.paused) {
-            try {
-              await mediaEl.play();
-              E.playPauseBtn.textContent = '⏸️';
-            } catch (e) {
-              showNotification('❌ Не удалось воспроизвести: ' + e.message);
-            }
-          } else {
-            mediaEl.pause();
-            E.playPauseBtn.textContent = '▶️';
-          }
-        }
-      });
+      // Удалён обработчик on(E.playPauseBtn, 'click', ...)
 
       async function handleSaveItem() {
         if (!selectedItemId) return;
@@ -1268,25 +1232,20 @@ if (jeetbotPanel && !jeetbotPanel.querySelector('iframe')) {
             strike: E.fields.selectedStrike?.checked || false
           };
         }
+        // Для видео/аудио/tts сохраняем только playbackRate (таймкод не трогаем)
         if (item.type === 'video' || item.type === 'audio' || item.type === 'tts') {
           upd.media = {
-            playbackRate: Number(E.fields.selectedSpeed?.value) || 1,
-            currentTime: Number(E.fields.selectedSeek?.value) || 0
+            playbackRate: Number(E.fields.selectedSpeed?.value) || 1
+            // currentTime удалён
           };
-          const mediaEl = E.mediaPreview?.querySelector('video, audio');
-          if (mediaEl) {
-            mediaEl.playbackRate = upd.media.playbackRate;
-            mediaEl.currentTime = upd.media.currentTime;
-          }
         }
         if (item.type === 'youtube') {
           upd.media = {
-            playbackRate: Number(E.fields.selectedSpeed?.value) || 1,
-            currentTime: Number(E.fields.selectedSeek?.value) || 0
+            playbackRate: Number(E.fields.selectedSpeed?.value) || 1
           };
           if (youtubePlayer && youtubeReady) {
             youtubePlayer.setVolume(upd.volume * 100);
-            youtubePlayer.seekTo(upd.media.currentTime, true);
+            // seek больше не делаем
           }
         }
         await update(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}`), upd);
@@ -1339,10 +1298,13 @@ if (jeetbotPanel && !jeetbotPanel.querySelector('iframe')) {
         if (!E.stageElement) return;
         E.stageElement.innerHTML = "";
         Object.entries(items).forEach(([id, item]) => {
-          if (!item || !item.visible) return;
+          // Пропускаем только невидимые элементы, кроме audio/tts – они должны быть слышны всегда
+          if (!item) return;
+          if (!item.visible && item.type !== 'audio' && item.type !== 'tts') return;
+
           const el = document.createElement("div");
           el.className = "overlay-item";
-          if (item.type === 'audio' || item.type === 'tts') el.classList.add('audio-hidden');
+          // audio-hidden больше не добавляем
           el.dataset.id = id;
           el.style.left = ((item.position?.left || 0) / STAGE_WIDTH * 100) + '%';
           el.style.top = ((item.position?.top || 0) / STAGE_HEIGHT * 100) + '%';
@@ -1350,6 +1312,14 @@ if (jeetbotPanel && !jeetbotPanel.querySelector('iframe')) {
           el.style.height = ((item.size?.height || 240) / STAGE_HEIGHT * 100) + '%';
           el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
           el.style.overflow = 'hidden';
+
+          // Если аудио/TTS невидимы, делаем их прозрачными и минимального размера, чтобы звук шёл
+          if ((item.type === 'audio' || item.type === 'tts') && !item.visible) {
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+            el.style.width = '1px';
+            el.style.height = '1px';
+          }
 
           let inner;
           if (item.type === 'image') {
@@ -1391,6 +1361,7 @@ if (jeetbotPanel && !jeetbotPanel.querySelector('iframe')) {
             inner.volume = item.volume || 1;
             inner.preload = 'auto';
             el.appendChild(inner);
+            // Запускаем воспроизведение, если нужно (с обходом автоплея)
             if (item.playing) {
               inner.muted = true;
               inner.play().then(() => { inner.muted = false; }).catch(() => {});
