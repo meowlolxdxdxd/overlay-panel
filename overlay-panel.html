@@ -160,18 +160,7 @@
 
     .broken-image { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(255,0,0,0.2); color: #fff; font-size: 14px; border-radius: 6px; }
 
-    #jeetbot-container {
-      display: flex; gap: 12px; margin-top: 12px;
-    }
-    #jeetbot-container .twitch-chat {
-      flex: 1; min-width: 0;
-    }
-    #jeetbot-container .jeetbot-panel {
-      flex: 1; min-width: 0;
-    }
-    #jeetbot-container iframe {
-      width: 100%; height: 500px; border: none; border-radius: 8px;
-    }
+    /* jeetbot-container удалён */
   </style>
 </head>
 <body>
@@ -201,12 +190,7 @@
           <div class="file-upload-wrapper">
             <div class="file-upload-trigger"><span>📁 Выбрать файл</span><input type="file" id="new-item-file" accept="image/*,video/*,audio/*" /></div>
           </div>
-          <div id="jeetbot-container" class="hidden">
-            <div class="twitch-chat">
-              <iframe src="https://www.twitch.tv/popout/meowlolxdxdxd/chat?popout=" allowfullscreen></iframe>
-            </div>
-            <div class="jeetbot-panel"></div>
-          </div>
+          <!-- Контейнер JeetBot удалён -->
           <button type="button" id="add-item-button">Добавить элемент</button>
           <p class="help-text" id="upload-status" style="display:none; color:#9147ff; opacity:0.9;"></p>
         </section>
@@ -283,7 +267,9 @@
       const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4YnBxeHZlZ2V5d2RheXRhcWdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTAwMjgsImV4cCI6MjA5NzM2NjAyOH0.PfSsQupiA7mmWF4mjjaZ86Prs2oHZ5A5-mvG2HenEDo";
 
       const SECRET = "meowlolxdjessew1lliams";
-      const JEETBOT_URL = "https://api.jeetbot.cc/voiceover/?token=ig85KT0UdCHka0FqhkXrwLRCbe25wvoMKfyspNGQDZS9IT1fZswp5_UXrr5iZCbT9wSVS40WDWg97l6WSWvndQ";
+      const JEETBOT_TOKEN = "ig85KT0UdCHka0FqhkXrwLRCbe25wvoMKfyspNGQDZS9IT1fZswp5_UXrr5iZCbT9wSVS40WDWg97l6WSWvndQ";
+      // URL вашей Supabase Edge Function (пока оставьте как есть, замените после деплоя функции)
+      const SUPABASE_FUNCTION_URL = SUPABASE_URL + "/functions/v1/jeetbot-proxy";
 
       const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js");
       const { getDatabase, ref, onValue, push, remove, update, set, get } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js");
@@ -352,11 +338,8 @@
         audioObs: $("audio-obs"),
         audioPreviewBox: $("audio-preview-box"),
         audioObsBox: $("audio-obs-box"),
-        jeetbotContainer: $("jeetbot-container"),
-        jeetbotPanel: document.querySelector(".jeetbot-panel")
       };
 
-      // обработчики плеера OBS
       let obsAudioHandlers = { play: null, pause: null, ended: null };
 
       function removeObsAudioListeners() {
@@ -592,7 +575,7 @@
           size: { width: (type === 'audio' || type === 'tts') ? 300 : 400, height: (type === 'audio' || type === 'tts') ? 60 : 240 },
           rotation: 0,
           volume: 1,
-          playing: (type === 'audio' || type === 'tts') ? false : false,   // по умолчанию не играет, пользователь запустит через плеер
+          playing: false,
           style: { fontSize: 36, bold: false, italic: false, strike: false, color: "#ffffff" },
           media: { playbackRate: 1, currentTime: 0 },
           fileName: payload.fileName || null,
@@ -652,12 +635,26 @@
         if (files && files.length) { for (const file of files) handleFileSelected(file); E.fields.file.value = ''; }
       });
 
-      window.addEventListener('message', (event) => {
-        if (event.origin !== new URL(JEETBOT_URL).origin) return;
-        if (event.data && event.data.type === 'voiceUrl' && event.data.url) {
-          handleTTSVoiceUrl(event.data.url);
+      // ============ НОВЫЙ СПОСОБ ПОЛУЧЕНИЯ TTS ============
+      async function requestJeetBotTTS() {
+        try {
+          const res = await fetch(SUPABASE_FUNCTION_URL, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          if (!res.ok) throw new Error(`Ошибка прокси: ${res.status}`);
+          const data = await res.json();
+          if (data && data.url) {
+            handleTTSVoiceUrl(data.url);
+          } else if (data && data.error) {
+            showNotification('❌ JeetBot: ' + data.error);
+          } else {
+            showNotification('❌ Неожиданный ответ от JeetBot');
+          }
+        } catch (e) {
+          showNotification('❌ Не удалось получить TTS: ' + e.message);
         }
-      });
+      }
 
       async function handleTTSVoiceUrl(url) {
         if (!itemsRef) {
@@ -665,7 +662,7 @@
           return;
         }
         const item = createDefaultItem('tts', { url, fileName: 'TTS' });
-        item.playing = true;
+        item.playing = true;   // сразу запускаем
         item.visible = false;
         await push(itemsRef, item);
         showNotification('✅ TTS добавлен в оверлей');
@@ -676,19 +673,7 @@
         const type = E.fields.type.value;
         E.labelNewUrl.classList.toggle('hidden', type === 'text' || type === 'tts');
         E.labelNewText.classList.toggle('hidden', type !== 'text' && type !== 'tts');
-        
-        if (type === 'tts') {
-          E.jeetbotContainer.classList.remove('hidden');
-          if (E.jeetbotPanel && !E.jeetbotPanel.querySelector('iframe')) {
-            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(JEETBOT_URL);
-            const iframe = document.createElement('iframe');
-            iframe.src = proxyUrl;
-            iframe.setAttribute('allow', 'autoplay');
-            E.jeetbotPanel.appendChild(iframe);
-          }
-        } else {
-          E.jeetbotContainer.classList.add('hidden');
-        }
+        // Больше не показываем JeetBot-контейнер
       }
       on(E.fields.type, 'change', handleNewTypeChange);
 
@@ -699,7 +684,11 @@
         const text = E.fields.text?.value.trim() || '';
         const file = E.fields.file?.files[0] || null;
 
-        if (type === 'tts') return;
+        if (type === 'tts') {
+          // Вместо открытия iframe — сразу запрашиваем голос через нашу функцию
+          await requestJeetBotTTS();
+          return;
+        }
         if (type === "text") {
           if (!text) { alert("Введите текст"); return; }
           if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
@@ -735,7 +724,7 @@
         if (!url && !file) showNotification('Введите URL или выберите файл');
       }
 
-      // ================== ФУНКЦИИ РЕДАКТОРА, ОВЕРЛЕЯ И TTS ==================
+      // ================== ФУНКЦИИ РЕДАКТОРА, ОВЕРЛЕЯ ==================
 
       function updateSelectionHandles() {
         document.querySelectorAll('.canvas-item .resize-handle, .canvas-item .rotate-handle').forEach(h => h.remove());
@@ -1089,7 +1078,7 @@
 
       function selectItem(id) {
         selectedItemId = id;
-        removeObsAudioListeners(); // удаляем старые слушатели
+        removeObsAudioListeners();
         const item = items[id];
         if (!item) return;
         if (E.fields.selectedVisible) E.fields.selectedVisible.checked = item.visible !== false;
@@ -1119,12 +1108,9 @@
           E.audioObsBox.classList.remove('hidden');
           E.audioPreview.src = item.url;
           E.audioObs.src = item.url;
-          // не запускаем автоматически, ждём действий пользователя
           E.audioObs.load();
           E.audioPreview.load();
-          // привязываем события
           setupObsAudioListeners(id);
-          // если playing уже true, запускаем плеер (это может быть после переключения)
           if (item.playing) {
             E.audioObs.play().catch(() => {});
           }
@@ -1295,13 +1281,9 @@
             inner.preload = 'auto';
             inner.style.width = '100%';
             inner.style.height = '100%';
-            // синхронизируем состояние playing
             if (item.playing) {
-              // используем трюк muted -> unmute для обхода автополитики
               inner.muted = true;
-              inner.play().then(() => {
-                inner.muted = false;
-              }).catch(() => {});
+              inner.play().then(() => { inner.muted = false; }).catch(() => {});
             }
             el.appendChild(inner);
           } else if (item.type === 'youtube') {
