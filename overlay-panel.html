@@ -184,6 +184,9 @@
           </label>
           <label id="label-new-url">URL файла или YouTube <input type="text" id="new-item-url" placeholder="https://..." /></label>
           <label id="label-new-text" class="hidden">Текст <textarea id="new-text-content" placeholder="Введи текст"></textarea></label>
+          <label id="label-new-voice" class="hidden">Голос (voice_id)
+            <input type="text" id="new-item-voice" placeholder="alex" />
+          </label>
           <label>Файл для загрузки</label>
           <div class="file-upload-wrapper">
             <div class="file-upload-trigger"><span>📁 Выбрать файл</span><input type="file" id="new-item-file" accept="image/*,video/*,audio/*" /></div>
@@ -264,7 +267,8 @@
       const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4YnBxeHZlZ2V5d2RheXRhcWdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTAwMjgsImV4cCI6MjA5NzM2NjAyOH0.PfSsQupiA7mmWF4mjjaZ86Prs2oHZ5A5-mvG2HenEDo";
 
       const SECRET = "meowlolxdjessew1lliams";
-      const SUPABASE_FUNCTION_URL = SUPABASE_URL + "/functions/v1/jeetbot-proxy";
+      // Функция Fish Audio TTS
+      const SUPABASE_FUNCTION_URL = SUPABASE_URL + "/functions/v1/fish-tts";
 
       const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js");
       const { getDatabase, ref, onValue, push, remove, update, set, get } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js");
@@ -295,10 +299,12 @@
         itemEditor: $("item-editor"),
         labelNewText: $("label-new-text"),
         labelNewUrl: $("label-new-url"),
+        labelNewVoice: $("label-new-voice"), // новое поле
         fields: {
           type: $("new-item-type"),
           url: $("new-item-url"),
           text: $("new-text-content"),
+          voice: $("new-item-voice"), // голос
           file: $("new-item-file"),
           selectedVisible: $("selected-item-visible"),
           selectedLeft: $("selected-item-left"),
@@ -629,17 +635,18 @@
         if (files && files.length) { for (const file of files) handleFileSelected(file); E.fields.file.value = ''; }
       });
 
-      // ============ TTS через StreamElements ============
-      async function requestJeetBotTTS() {
+      // ============ TTS через Fish Audio ============
+      async function requestTTS() {
         try {
           const text = E.fields.text?.value?.trim() || '';
           if (!text) {
             showNotification('❌ Введите текст для озвучки');
             return;
           }
-          const url = `${SUPABASE_FUNCTION_URL}?text=${encodeURIComponent(text)}`;
+          const voice = E.fields.voice?.value?.trim() || 'alex';
+          const url = `${SUPABASE_FUNCTION_URL}?text=${encodeURIComponent(text)}&voice=${encodeURIComponent(voice)}`;
           const res = await fetch(url);
-          if (!res.ok) throw new Error(`Ошибка прокси: ${res.status}`);
+          if (!res.ok) throw new Error(`Ошибка TTS: ${res.status}`);
           const data = await res.json();
           if (data && data.url) {
             handleTTSVoiceUrl(data.url);
@@ -670,6 +677,7 @@
         const type = E.fields.type.value;
         E.labelNewUrl.classList.toggle('hidden', !['image','video','audio','youtube'].includes(type));
         E.labelNewText.classList.toggle('hidden', !['text','tts'].includes(type));
+        if (E.labelNewVoice) E.labelNewVoice.classList.toggle('hidden', type !== 'tts');
       }
       on(E.fields.type, 'change', handleNewTypeChange);
 
@@ -681,7 +689,7 @@
         const file = E.fields.file?.files[0] || null;
 
         if (type === 'tts') {
-          await requestJeetBotTTS();
+          await requestTTS();
           return;
         }
         if (type === "text") {
