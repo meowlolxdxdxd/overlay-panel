@@ -685,10 +685,9 @@
         const file = E.fields.file?.files[0] || null;
 
         if (type === 'tts') {
-          // Вместо открытия iframe — сразу запрашиваем голос через нашу функцию
-          await requestJeetBotTTS();
-          return;
-        }
+    await requestJeetBotTTS();
+    return;
+}
         if (type === "text") {
           if (!text) { alert("Введите текст"); return; }
           if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
