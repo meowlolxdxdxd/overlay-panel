@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OBS Overlay — Главная</title>
+  <style>
+    body { font-family: Inter, Arial, sans-serif; margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; background:#0b0b0b; color:#fff }
+    .wrap { max-width:780px; padding:28px; text-align:center }
+    a.button { display:inline-block; margin:10px; padding:12px 18px; background:#9147ff; color:#fff; border-radius:10px; text-decoration:none }
+    .muted { opacity:0.75; font-size:14px; margin-top:8px }
+    input { min-width:420px; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.03); color:#fff }
+    button { cursor:pointer; padding:10px 14px; border-radius:8px; border:none; background:#9147ff; color:#fff; transition:background .12s ease }
+    button:hover { background:#7b33db }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>OBS Overlay</h1>
+    <p class="muted">Выберите режим. Для вставки в OBS используйте ссылку <strong>?mode=overlay</strong> в браузерном источнике.</p>
+    <div style="display:flex; gap:10px; align-items:center; justify-content:center; flex-wrap:wrap; margin-top:14px;">
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center;">
+        <input id="obs-link" type="text" readonly />
+        <button id="copy-obs-link">Копировать ссылку для OBS</button>
+      </div>
+      <a class="button" href="obs_overlay.html?mode=control" target="_blank">Панель управления</a>
+    </div>
+    <p class="muted">Можно также открыть эти ссылки напрямую в OBS Browser Source.</p>
+  </div>
+  <script>
+    (function(){
+      const input = document.getElementById('obs-link');
+      const copyBtn = document.getElementById('copy-obs-link');
+      const obsUrl = new URL('obs_overlay.html?mode=overlay', location.href).href;
+      input.value = obsUrl;
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(obsUrl);
+          const prev = copyBtn.textContent;
+          copyBtn.textContent = 'Скопировано!';
+          setTimeout(() => copyBtn.textContent = prev, 1400);
+        } catch (e) {
+          alert('Не удалось скопировать. Скопируйте вручную: ' + obsUrl);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
