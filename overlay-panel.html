@@ -168,7 +168,7 @@
     }
     #voices-modal .modal-content {
       background: #1a1a1a; border: 1px solid #333; border-radius: 12px;
-      padding: 20px; width: 400px; max-height: 80vh; overflow-y: auto;
+      padding: 20px; width: 420px; max-height: 80vh; overflow-y: auto;
     }
   </style>
 </head>
@@ -222,6 +222,15 @@
             <h3 style="margin: 0;">Управление голосами</h3>
             <button id="close-voices-modal" style="width: auto; padding: 4px 8px; background: transparent; border: 1px solid #555; color: #fff; border-radius: 6px;">✖️</button>
           </div>
+          <!-- Поле для вставки ссылки и кнопка извлечения -->
+          <div style="margin-bottom: 8px;">
+            <label style="font-size: 13px; margin-bottom: 4px;">Вставить ссылку Fish Audio</label>
+            <div style="display: flex; gap: 6px;">
+              <input type="text" id="voice-link-input" placeholder="https://fish.audio/ru/app/text-to-speech/?...modelIds=..." style="flex: 2;" />
+              <button id="extract-voice-link-btn" style="width: auto; padding: 6px 12px; font-size: 13px;">Извлечь</button>
+            </div>
+          </div>
+          <!-- Добавление голоса -->
           <div style="margin-bottom: 12px; display: flex; gap: 6px;">
             <input type="text" id="new-voice-name" placeholder="Название голоса" style="flex: 1;" />
             <input type="text" id="new-voice-model-id" placeholder="modelId" style="flex: 2;" />
@@ -334,7 +343,7 @@
           type: $("new-item-type"),
           url: $("new-item-url"),
           text: $("new-text-content"),
-          voice: $("new-item-voice"), // теперь это select
+          voice: $("new-item-voice"), // select
           file: $("new-item-file"),
           selectedVisible: $("selected-item-visible"),
           selectedLeft: $("selected-item-left"),
@@ -369,7 +378,7 @@
         audioObs: $("audio-obs"),
         audioPreviewBox: $("audio-preview-box"),
         audioObsBox: $("audio-obs-box"),
-        // новые элементы для управления голосами
+        // Управление голосами
         manageVoicesBtn: $("manage-voices-btn"),
         voicesModal: $("voices-modal"),
         closeVoicesModal: $("close-voices-modal"),
@@ -377,6 +386,9 @@
         newVoiceModelId: $("new-voice-model-id"),
         addVoiceBtn: $("add-voice-btn"),
         voicesList: $("voices-list"),
+        // Извлечение из ссылки
+        voiceLinkInput: $("voice-link-input"),
+        extractVoiceLinkBtn: $("extract-voice-link-btn"),
       };
 
       let obsAudioHandlers = { play: null, pause: null, ended: null };
@@ -436,9 +448,38 @@
       let urlCounter = 0;
 
       const BUCKET_NAME = 'overlay';
-      const voicesRef = ref(db, "overlay/voices"); // коллекция голосов
+      const voicesRef = ref(db, "overlay/voices");
 
       // ============ ГОЛОСА (VOICES) ============
+      function extractVoiceFromUrl(rawUrl) {
+        try {
+          const u = new URL(rawUrl);
+          // Ищем modelIds или modelId
+          const modelIds = u.searchParams.get('modelIds');
+          const modelId = u.searchParams.get('modelId');
+          const id = modelIds || modelId || '';
+          if (!id) return { name: '', modelId: '' };
+          // Предлагаем название на основе части ID
+          return { name: 'Голос ' + id.substring(0, 8), modelId: id };
+        } catch (e) {
+          return { name: '', modelId: '' };
+        }
+      }
+
+      // Кнопка извлечения
+      on(E.extractVoiceLinkBtn, 'click', () => {
+        const raw = E.voiceLinkInput?.value?.trim();
+        if (!raw) return;
+        const { name, modelId } = extractVoiceFromUrl(raw);
+        if (!modelId) {
+          showNotification('❌ Не удалось извлечь modelId из ссылки');
+          return;
+        }
+        if (E.newVoiceName) E.newVoiceName.value = name;
+        if (E.newVoiceModelId) E.newVoiceModelId.value = modelId;
+        showNotification('✅ Голос извлечён, можно изменить название и добавить');
+      });
+
       function loadVoices() {
         onValue(voicesRef, (snap) => {
           const voices = snap.val() || {};
@@ -474,7 +515,6 @@
         });
       }
 
-      // Вызов при старте
       loadVoices();
 
       // Открытие/закрытие модалки
@@ -498,9 +538,10 @@
         await push(voicesRef, { name, modelId });
         E.newVoiceName.value = '';
         E.newVoiceModelId.value = '';
+        E.voiceLinkInput.value = '';
         showNotification('✅ Голос добавлен');
       });
-      // Горячие клавиши J+C и O+C
+            // Горячие клавиши J+C и O+C
       let jPressed = false, cPressed = false, oPressed = false;
       document.addEventListener('keydown', (e) => {
         if (e.key === 'j' || e.key === 'J') jPressed = true;
