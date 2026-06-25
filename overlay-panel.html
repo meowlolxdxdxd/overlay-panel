@@ -159,8 +159,6 @@
     #dnd-notification.show { opacity: 1; }
 
     .broken-image { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(255,0,0,0.2); color: #fff; font-size: 14px; border-radius: 6px; }
-
-    /* jeetbot-container удалён */
   </style>
 </head>
 <body>
@@ -190,7 +188,6 @@
           <div class="file-upload-wrapper">
             <div class="file-upload-trigger"><span>📁 Выбрать файл</span><input type="file" id="new-item-file" accept="image/*,video/*,audio/*" /></div>
           </div>
-          <!-- Контейнер JeetBot удалён -->
           <button type="button" id="add-item-button">Добавить элемент</button>
           <p class="help-text" id="upload-status" style="display:none; color:#9147ff; opacity:0.9;"></p>
         </section>
@@ -248,7 +245,7 @@
     </div>
   </div>
   <div id="dnd-notification"></div>
-  <script type="module">
+    <script type="module">
     (async () => {
       if (document.readyState === 'loading') await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
 
@@ -267,8 +264,6 @@
       const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4YnBxeHZlZ2V5d2RheXRhcWdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTAwMjgsImV4cCI6MjA5NzM2NjAyOH0.PfSsQupiA7mmWF4mjjaZ86Prs2oHZ5A5-mvG2HenEDo";
 
       const SECRET = "meowlolxdjessew1lliams";
-      const JEETBOT_TOKEN = "ig85KT0UdCHka0FqhkXrwLRCbe25wvoMKfyspNGQDZS9IT1fZswp5_UXrr5iZCbT9wSVS40WDWg97l6WSWvndQ";
-      // URL вашей Supabase Edge Function (пока оставьте как есть, замените после деплоя функции)
       const SUPABASE_FUNCTION_URL = SUPABASE_URL + "/functions/v1/jeetbot-proxy";
 
       const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js");
@@ -397,8 +392,7 @@
       let urlCounter = 0;
 
       const BUCKET_NAME = 'overlay';
-
-      // Горячие клавиши J+C и O+C
+            // Горячие клавиши J+C и O+C
       let jPressed = false, cPressed = false, oPressed = false;
       document.addEventListener('keydown', (e) => {
         if (e.key === 'j' || e.key === 'J') jPressed = true;
@@ -635,21 +629,24 @@
         if (files && files.length) { for (const file of files) handleFileSelected(file); E.fields.file.value = ''; }
       });
 
-      // ============ НОВЫЙ СПОСОБ ПОЛУЧЕНИЯ TTS ============
+      // ============ TTS через StreamElements ============
       async function requestJeetBotTTS() {
         try {
-          const res = await fetch(SUPABASE_FUNCTION_URL, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' }
-          });
+          const text = E.fields.text?.value?.trim() || '';
+          if (!text) {
+            showNotification('❌ Введите текст для озвучки');
+            return;
+          }
+          const url = `${SUPABASE_FUNCTION_URL}?text=${encodeURIComponent(text)}`;
+          const res = await fetch(url);
           if (!res.ok) throw new Error(`Ошибка прокси: ${res.status}`);
           const data = await res.json();
           if (data && data.url) {
             handleTTSVoiceUrl(data.url);
           } else if (data && data.error) {
-            showNotification('❌ JeetBot: ' + data.error);
+            showNotification('❌ TTS: ' + data.error);
           } else {
-            showNotification('❌ Неожиданный ответ от JeetBot');
+            showNotification('❌ Неожиданный ответ от TTS');
           }
         } catch (e) {
           showNotification('❌ Не удалось получить TTS: ' + e.message);
@@ -662,7 +659,7 @@
           return;
         }
         const item = createDefaultItem('tts', { url, fileName: 'TTS' });
-        item.playing = true;   // сразу запускаем
+        item.playing = true;
         item.visible = false;
         await push(itemsRef, item);
         showNotification('✅ TTS добавлен в оверлей');
@@ -671,9 +668,8 @@
       function handleNewTypeChange() {
         if (!E.fields.type) return;
         const type = E.fields.type.value;
-        E.labelNewUrl.classList.toggle('hidden', type === 'text' || type === 'tts');
-        E.labelNewText.classList.toggle('hidden', type !== 'text' && type !== 'tts');
-        // Больше не показываем JeetBot-контейнер
+        E.labelNewUrl.classList.toggle('hidden', !['image','video','audio','youtube'].includes(type));
+        E.labelNewText.classList.toggle('hidden', !['text','tts'].includes(type));
       }
       on(E.fields.type, 'change', handleNewTypeChange);
 
@@ -685,9 +681,9 @@
         const file = E.fields.file?.files[0] || null;
 
         if (type === 'tts') {
-    await requestJeetBotTTS();
-    return;
-}
+          await requestJeetBotTTS();
+          return;
+        }
         if (type === "text") {
           if (!text) { alert("Введите текст"); return; }
           if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
