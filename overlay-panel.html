@@ -267,7 +267,7 @@
       const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4YnBxeHZlZ2V5d2RheXRhcWdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTAwMjgsImV4cCI6MjA5NzM2NjAyOH0.PfSsQupiA7mmWF4mjjaZ86Prs2oHZ5A5-mvG2HenEDo";
 
       const SECRET = "meowlolxdjessew1lliams";
-      // Функция Fish Audio TTS
+      // Функция Fish Audio TTS (jeetbot-proxy уже работает)
       const SUPABASE_FUNCTION_URL = SUPABASE_URL + "/functions/v1/jeetbot-proxy";
 
       const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js");
@@ -299,7 +299,7 @@
         itemEditor: $("item-editor"),
         labelNewText: $("label-new-text"),
         labelNewUrl: $("label-new-url"),
-        labelNewVoice: $("label-new-voice"), // новое поле
+        labelNewVoice: $("label-new-voice"), // поле голоса
         fields: {
           type: $("new-item-type"),
           url: $("new-item-url"),
@@ -665,9 +665,31 @@
           showNotification('❌ Сначала выберите комнату');
           return;
         }
+
+        // Удаляем все предыдущие TTS-элементы из комнаты
+        const allItems = items || {};
+        for (const [id, item] of Object.entries(allItems)) {
+          if (item?.type === 'tts') {
+            // Удаляем файл из Storage, если есть путь
+            if (item.storagePath) {
+              try {
+                await supabase.storage.from(BUCKET_NAME).remove([item.storagePath]);
+              } catch (e) {}
+            }
+            await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
+          }
+        }
+
+        // Извлекаем путь к файлу из URL для будущего удаления
+        const urlObj = new URL(url);
+        const pathParts = urlObj.pathname.split('/');
+        const bucketIndex = pathParts.indexOf('overlay');
+        const storagePath = bucketIndex >= 0 ? pathParts.slice(bucketIndex + 1).join('/') : null;
+
         const item = createDefaultItem('tts', { url, fileName: 'TTS' });
         item.playing = true;
         item.visible = false;
+        if (storagePath) item.storagePath = storagePath;
         await push(itemsRef, item);
         showNotification('✅ TTS добавлен в оверлей');
       }
@@ -797,6 +819,14 @@
           inner.preload = 'auto';
           inner.style.width = '100%';
           inner.style.height = '100%';
+          // Автоудаление TTS после окончания
+          if (item.type === 'tts') {
+            inner.addEventListener('ended', () => {
+              if (activeRoomId) {
+                remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
+              }
+            });
+          }
           if (item.playing) {
             inner.play().catch(() => {});
           }
@@ -1284,6 +1314,12 @@
             inner.preload = 'auto';
             inner.style.width = '100%';
             inner.style.height = '100%';
+            // Автоудаление TTS после окончания
+            if (item.type === 'tts') {
+              inner.addEventListener('ended', () => {
+                remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
+              });
+            }
             if (item.playing) {
               inner.muted = true;
               inner.play().then(() => { inner.muted = false; }).catch(() => {});
