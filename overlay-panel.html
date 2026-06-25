@@ -298,6 +298,7 @@
 
       const $ = id => document.getElementById(id);
       const on = (el, event, handler) => el?.addEventListener(event, handler);
+      const off = (el, event, handler) => el?.removeEventListener(event, handler);
 
       const E = {
         overlayContainer: $("overlay-container"),
@@ -354,6 +355,37 @@
         jeetbotContainer: $("jeetbot-container"),
         jeetbotPanel: document.querySelector(".jeetbot-panel")
       };
+
+      // обработчики плеера OBS
+      let obsAudioHandlers = { play: null, pause: null, ended: null };
+
+      function removeObsAudioListeners() {
+        if (!E.audioObs) return;
+        if (obsAudioHandlers.play) off(E.audioObs, 'play', obsAudioHandlers.play);
+        if (obsAudioHandlers.pause) off(E.audioObs, 'pause', obsAudioHandlers.pause);
+        if (obsAudioHandlers.ended) off(E.audioObs, 'ended', obsAudioHandlers.ended);
+        obsAudioHandlers = {};
+      }
+
+      function setupObsAudioListeners(itemId) {
+        removeObsAudioListeners();
+        if (!E.audioObs || !itemId) return;
+        obsAudioHandlers.play = () => {
+          if (selectedItemId !== itemId) return;
+          update(ref(db, `overlay/rooms/${activeRoomId}/items/${itemId}`), { playing: true });
+        };
+        obsAudioHandlers.pause = () => {
+          if (selectedItemId !== itemId) return;
+          update(ref(db, `overlay/rooms/${activeRoomId}/items/${itemId}`), { playing: false });
+        };
+        obsAudioHandlers.ended = () => {
+          if (selectedItemId !== itemId) return;
+          update(ref(db, `overlay/rooms/${activeRoomId}/items/${itemId}`), { playing: false });
+        };
+        on(E.audioObs, 'play', obsAudioHandlers.play);
+        on(E.audioObs, 'pause', obsAudioHandlers.pause);
+        on(E.audioObs, 'ended', obsAudioHandlers.ended);
+      }
 
       const STAGE_WIDTH = 1920;
       const STAGE_HEIGHT = 1080;
@@ -488,6 +520,7 @@
         itemsListener = null;
         items = {};
         selectedItemId = null;
+        removeObsAudioListeners();
         if (E.itemEditor) E.itemEditor.classList.add('hidden');
         if (E.canvas) E.canvas.querySelectorAll('.canvas-item').forEach(el => el.remove());
         if (E.itemList) E.itemList.innerHTML = '';
@@ -559,7 +592,7 @@
           size: { width: (type === 'audio' || type === 'tts') ? 300 : 400, height: (type === 'audio' || type === 'tts') ? 60 : 240 },
           rotation: 0,
           volume: 1,
-          playing: type === 'tts' ? true : false,
+          playing: (type === 'audio' || type === 'tts') ? false : false,   // по умолчанию не играет, пользователь запустит через плеер
           style: { fontSize: 36, bold: false, italic: false, strike: false, color: "#ffffff" },
           media: { playbackRate: 1, currentTime: 0 },
           fileName: payload.fileName || null,
@@ -773,8 +806,6 @@
           inner.style.width = '100%';
           inner.style.height = '100%';
           if (item.playing) {
-            inner.autoplay = true;
-            inner.load();
             inner.play().catch(() => {});
           }
         } else if (item.type === 'youtube') {
@@ -834,8 +865,12 @@
                 inner.src = item.url;
                 if (inner.tagName === 'AUDIO' || inner.tagName === 'VIDEO') inner.load();
               }
-              if (item.type === 'tts' && item.playing && inner.tagName === 'AUDIO') {
-                inner.play().catch(() => {});
+              if ((item.type === 'audio' || item.type === 'tts') && inner.tagName === 'AUDIO') {
+                if (item.playing) {
+                  inner.play().catch(() => {});
+                } else {
+                  inner.pause();
+                }
               }
               if (item.type === 'text' && inner.classList.contains('overlay-text')) {
                 inner.textContent = item.text;
@@ -1054,6 +1089,7 @@
 
       function selectItem(id) {
         selectedItemId = id;
+        removeObsAudioListeners(); // удаляем старые слушатели
         const item = items[id];
         if (!item) return;
         if (E.fields.selectedVisible) E.fields.selectedVisible.checked = item.visible !== false;
@@ -1083,10 +1119,13 @@
           E.audioObsBox.classList.remove('hidden');
           E.audioPreview.src = item.url;
           E.audioObs.src = item.url;
+          // не запускаем автоматически, ждём действий пользователя
           E.audioObs.load();
           E.audioPreview.load();
+          // привязываем события
+          setupObsAudioListeners(id);
+          // если playing уже true, запускаем плеер (это может быть после переключения)
           if (item.playing) {
-            E.audioObs.autoplay = true;
             E.audioObs.play().catch(() => {});
           }
         } else if (item.type === 'video' || item.type === 'youtube') {
@@ -1174,6 +1213,7 @@
 
       function closeEditor() {
         selectedItemId = null;
+        removeObsAudioListeners();
         E.itemEditor.classList.add('hidden');
         updateSelectionHandles();
         youtubePlayer = null;
@@ -1248,21 +1288,22 @@
             inner = document.createElement('audio');
             inner.src = item.url;
             inner.controls = false;
-            inner.autoplay = true;               // важно для автозапуска в OBS
-            inner.muted = true;                  // сначала muted, чтобы обойти блокировку
+            inner.autoplay = false;
+            inner.muted = false;
             inner.loop = false;
             inner.volume = item.volume || 1;
             inner.preload = 'auto';
-            el.appendChild(inner);
-            // после начала воспроизведения снимаем mute
-            inner.addEventListener('play', function unmuteAudio() {
-              inner.muted = false;
-              inner.removeEventListener('play', unmuteAudio);
-            });
-            // если элемент уже играет (например, при повторном рендере)
-            if (item.playing && inner.paused) {
-              inner.play().catch(() => {});
+            inner.style.width = '100%';
+            inner.style.height = '100%';
+            // синхронизируем состояние playing
+            if (item.playing) {
+              // используем трюк muted -> unmute для обхода автополитики
+              inner.muted = true;
+              inner.play().then(() => {
+                inner.muted = false;
+              }).catch(() => {});
             }
+            el.appendChild(inner);
           } else if (item.type === 'youtube') {
             inner = document.createElement('iframe');
             inner.src = item.url;
