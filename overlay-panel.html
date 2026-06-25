@@ -32,7 +32,6 @@
     .overlay-item { position: absolute; touch-action: none; user-select: none; cursor: grab; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; overflow: hidden; }
     .overlay-item.dragging { cursor: grabbing; }
     .overlay-item img, .overlay-item iframe, .overlay-item video { width: 100%; height: 100%; object-fit: fill; display: block; border-radius: 10px; pointer-events: none; }
-    /* audio-hidden больше не используется, оставим на всякий случай */
     .overlay-item.audio-hidden { display: none; }
     .overlay-item audio { width: 100%; height: 100%; pointer-events: auto; display: block; }
     .overlay-text { white-space: pre-wrap; word-break: break-word; padding: 0; border-radius: 0; background: transparent; min-width: 0; min-height: 0; box-sizing: border-box; display: inline-block; }
@@ -105,8 +104,6 @@
     .canvas-item.selected { border: 2px solid #9147ff; z-index: 10; }
     .canvas-item img, .canvas-item video { width: 100%; height: 100%; object-fit: fill; display: block; border-radius: 6px; }
     .canvas-item audio { width: 100%; height: 100%; pointer-events: auto; display: block; }
-
-    /* crop-inner удалён, стили больше не нужны */
 
     .resize-handle { position: absolute; width: 12px; height: 12px; background: #9147ff; border: 2px solid #fff; border-radius: 2px; z-index: 20; pointer-events: auto; }
     .resize-handle.nw { top: -6px; left: -6px; cursor: nwse-resize; }
@@ -561,7 +558,6 @@
           position: { ...NEW_ITEM_POSITION },
           size: { width: (type === 'audio' || type === 'tts') ? 300 : 400, height: (type === 'audio' || type === 'tts') ? 60 : 240 },
           rotation: 0,
-          // crop удалён
           volume: 1,
           playing: type === 'tts' ? true : false,
           style: { fontSize: 36, bold: false, italic: false, strike: false, color: "#ffffff" },
@@ -623,7 +619,6 @@
         if (files && files.length) { for (const file of files) handleFileSelected(file); E.fields.file.value = ''; }
       });
 
-      // Обработка сообщений от JeetBot
       window.addEventListener('message', (event) => {
         if (event.origin !== new URL(JEETBOT_URL).origin) return;
         if (event.data && event.data.type === 'voiceUrl' && event.data.url) {
@@ -707,7 +702,7 @@
         if (!url && !file) showNotification('Введите URL или выберите файл');
       }
 
-      // ================== ФУНКЦИИ РЕДАКТОРА, ОВЕРЛЕЯ И TTS (обрезка удалена) ==================
+      // ================== ФУНКЦИИ РЕДАКТОРА, ОВЕРЛЕЯ И TTS ==================
 
       function updateSelectionHandles() {
         document.querySelectorAll('.canvas-item .resize-handle, .canvas-item .rotate-handle').forEach(h => h.remove());
@@ -730,8 +725,6 @@
         }
       }
 
-      // applyCrop полностью удалена
-
       function buildCanvasItem(id, item) {
         const el = document.createElement('div');
         el.className = 'canvas-item';
@@ -745,7 +738,6 @@
         el.style.height = (item.size?.height || 240) + 'px';
         el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
 
-        // Нет crop-inner, вставляем напрямую
         let inner;
         if (item.type === 'image') {
           inner = document.createElement('img');
@@ -836,7 +828,6 @@
             el.style.height = (item.size?.height || 240) + 'px';
             el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
             el.style.display = item.visible !== false ? 'flex' : 'none';
-            // Нет crop-inner, просто обновляем src при необходимости
             const inner = el.querySelector('img, video, audio, iframe, .overlay-text');
             if (inner) {
               if (inner.tagName !== 'IFRAME' && inner.tagName !== 'DIV' && inner.src !== item.url) {
@@ -850,7 +841,6 @@
                 inner.textContent = item.text;
                 inner.style.fontSize = (item.style?.fontSize||36)+'px';
                 inner.style.color = item.style?.color||'#fff';
-                // ... можно обновить и другие стили при необходимости
               }
             }
           }
@@ -946,13 +936,10 @@
           startX: coords.x, startY: coords.y,
           origW, origH,
           origLeft: parseFloat(el.style.left), origTop: parseFloat(el.style.top)
-          // cropMode удалён
         };
         if (e.pointerId !== undefined) el.setPointerCapture(e.pointerId);
         window.addEventListener('pointermove', resizeMove);
         window.addEventListener('pointerup', resizeEnd, { once: true });
-
-        // Больше не меняем border при Alt
         el.style.borderStyle = '';
         el.style.borderColor = '';
       }
@@ -977,7 +964,6 @@
         if (dir.includes('s')) newH = resizeState.origH + dy;
         if (dir.includes('n')) newH = resizeState.origH - dy;
 
-        // Всегда обычный ресайз (без crop)
         if (!e.shiftKey) {
           const origRatio = resizeState.origW / resizeState.origH;
           if (dir === 'e' || dir === 'w') { newH = newW / origRatio; }
@@ -1126,7 +1112,7 @@
               youtubePlayer = new YT.Player(`youtube-${id}`, {
                 events: {
                   onReady: () => { youtubeReady = true; },
-                  onStateChange: (e) => { /* можно добавить индикацию, но кнопки play/pause нет */ }
+                  onStateChange: (e) => { }
                 }
               });
             }
@@ -1262,15 +1248,20 @@
             inner = document.createElement('audio');
             inner.src = item.url;
             inner.controls = false;
-            inner.autoplay = false;
+            inner.autoplay = true;               // важно для автозапуска в OBS
+            inner.muted = true;                  // сначала muted, чтобы обойти блокировку
             inner.loop = false;
-            inner.muted = false;
             inner.volume = item.volume || 1;
             inner.preload = 'auto';
             el.appendChild(inner);
-            if (item.playing) {
-              inner.muted = true;
-              inner.play().then(() => { inner.muted = false; }).catch(() => {});
+            // после начала воспроизведения снимаем mute
+            inner.addEventListener('play', function unmuteAudio() {
+              inner.muted = false;
+              inner.removeEventListener('play', unmuteAudio);
+            });
+            // если элемент уже играет (например, при повторном рендере)
+            if (item.playing && inner.paused) {
+              inner.play().catch(() => {});
             }
           } else if (item.type === 'youtube') {
             inner = document.createElement('iframe');
