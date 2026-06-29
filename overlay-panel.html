@@ -354,7 +354,6 @@
         labelNewText: $("label-new-text"),
         labelNewUrl: $("label-new-url"),
         labelNewVoice: $("label-new-voice"),
-        // Мем‑лейблы
         labelNewMemeVideo: $("label-new-meme-video"),
         labelNewMemeImage: $("label-new-meme-image"),
         labelNewMemeAudio: $("label-new-meme-audio"),
@@ -381,7 +380,6 @@
           selectedBold: $("selected-item-bold"),
           selectedItalic: $("selected-item-italic"),
           selectedStrike: $("selected-item-strike"),
-          // редактор мема
           selectedMemeVideo: $("selected-meme-video"),
           selectedMemeImage: $("selected-meme-image"),
           selectedMemeAudio: $("selected-meme-audio"),
@@ -565,7 +563,7 @@
       });
 
       // ============ MEME HOTKEYS ============
-      const memeHotkeyMap = {}; // key: клавиша (верхний регистр), value: id элемента
+      const memeHotkeyMap = {};
 
       function updateMemeHotkeyMap() {
         for (const key of Object.keys(memeHotkeyMap)) {
@@ -678,6 +676,7 @@
         E.dndNotification._timeout = setTimeout(() => E.dndNotification.classList.remove("show"), dur);
       }
 
+      // ============ ДОБАВЛЕНИЕ ЭЛЕМЕНТА ============
       async function handleAddItem() {
         if (!E.fields.type) return;
         const type = E.fields.type.value;
@@ -846,6 +845,14 @@
         E.canvas.style.setProperty('--canvas-scale', currentScale);
       }
       window.addEventListener('resize', scaleCanvas);
+
+      function showNotification(msg, dur = 3000) {
+        if (!E.dndNotification) return;
+        E.dndNotification.textContent = msg;
+        E.dndNotification.classList.add("show");
+        clearTimeout(E.dndNotification._timeout);
+        E.dndNotification._timeout = setTimeout(() => E.dndNotification.classList.remove("show"), dur);
+      }
 
       async function initRooms() {
         const protectedSnap = await get(ref(db, `overlay/rooms/${PROTECTED_ROOM_ID}`));
@@ -1040,7 +1047,8 @@
         const el = document.createElement('div');
         el.className = 'canvas-item';
         el.dataset.id = id;
-        el.style.display = 'flex'; // всегда показываем на холсте, прозрачность через CSS
+        // всегда показываем на холсте, видимость регулируем классом invisible
+        el.style.display = 'flex';
         const left = (item.position?.left || 0) + OFFSET_X;
         const top = (item.position?.top || 0) + OFFSET_Y;
         el.style.left = left + 'px';
@@ -1050,7 +1058,6 @@
         el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
 
         if (!item.visible) el.classList.add('invisible');
-        else el.classList.remove('invisible');
 
         let inner;
         if (item.type === 'image') {
@@ -1105,8 +1112,12 @@
             inner.style.width = '100%';
             inner.style.height = '100%';
             inner.playsInline = true;
-            inner.addEventListener('ended', () => handleMemeEnded(id));
-            if (item.playing) inner.play().catch(() => {});
+            if (!inner.hasAttribute('data-meme-ended')) {
+              inner.addEventListener('ended', () => handleMemeEnded(id));
+              inner.setAttribute('data-meme-ended', 'true');
+            }
+            if (item.playing && inner.paused) inner.play().catch(() => {});
+            else if (!item.playing && !inner.paused) inner.pause();
             el.appendChild(inner);
           } else if (item.memeImage) {
             inner = document.createElement('img');
@@ -1124,9 +1135,13 @@
               audioEl.volume = item.volume || 1;
               audioEl.preload = 'auto';
               audioEl.style.display = 'none';
-              audioEl.addEventListener('ended', () => handleMemeEnded(id));
+              if (!audioEl.hasAttribute('data-meme-ended')) {
+                audioEl.addEventListener('ended', () => handleMemeEnded(id));
+                audioEl.setAttribute('data-meme-ended', 'true');
+              }
               el.appendChild(audioEl);
-              if (item.playing) audioEl.play().catch(() => {});
+              if (item.playing && audioEl.paused) audioEl.play().catch(() => {});
+              else if (!item.playing && !audioEl.paused) audioEl.pause();
             }
           }
         } else if (item.type === 'youtube') {
@@ -1176,8 +1191,10 @@
             el.style.width = (item.size?.width || 320) + 'px';
             el.style.height = (item.size?.height || 240) + 'px';
             el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
-            el.style.display = 'flex'; // всегда показываем на холсте
+            // всегда показываем на холсте
+            el.style.display = 'flex';
             el.classList.toggle('invisible', !item.visible);
+
             const inner = el.querySelector('img, video, iframe, .overlay-text');
             if (inner) {
               if (item.type === 'meme') {
@@ -1187,10 +1204,18 @@
                   if (videoEl.src !== (item.memeVideo || '')) { videoEl.src = item.memeVideo || ''; videoEl.load(); }
                   if (item.playing && videoEl.paused) videoEl.play().catch(() => {});
                   else if (!item.playing && !videoEl.paused) videoEl.pause();
+                  if (!videoEl.hasAttribute('data-meme-ended')) {
+                    videoEl.addEventListener('ended', () => handleMemeEnded(id));
+                    videoEl.setAttribute('data-meme-ended', 'true');
+                  }
                 } else if (audioEl) {
                   if (audioEl.src !== (item.memeAudio || '')) { audioEl.src = item.memeAudio || ''; audioEl.load(); }
                   if (item.playing && audioEl.paused) audioEl.play().catch(() => {});
                   else if (!item.playing && !audioEl.paused) audioEl.pause();
+                  if (!audioEl.hasAttribute('data-meme-ended')) {
+                    audioEl.addEventListener('ended', () => handleMemeEnded(id));
+                    audioEl.setAttribute('data-meme-ended', 'true');
+                  }
                 }
                 const imgEl = el.querySelector('img');
                 if (imgEl && imgEl.src !== (item.memeImage || '')) imgEl.src = item.memeImage || '';
@@ -1199,8 +1224,8 @@
                 inner.style.fontSize = (item.style?.fontSize||36)+'px';
                 inner.style.color = item.style?.color||'#fff';
               } else if ((item.type === 'audio' || item.type === 'tts') && inner.tagName === 'AUDIO') {
-                if (item.playing) inner.play().catch(() => {});
-                else inner.pause();
+                if (item.playing && inner.paused) inner.play().catch(() => {});
+                else if (!item.playing && !inner.paused) inner.pause();
               } else if (inner.tagName !== 'IFRAME' && inner.tagName !== 'DIV' && inner.src !== item.url && item.type !== 'meme') {
                 inner.src = item.url;
                 if (inner.tagName === 'AUDIO' || inner.tagName === 'VIDEO') inner.load();
