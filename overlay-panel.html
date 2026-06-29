@@ -690,7 +690,6 @@
         }
 
         if (type === 'meme') {
-          // --- ЗАГРУЗКА ФАЙЛОВ МЕМА С ПК ---
           const files = E.fields.file?.files;
           let memeVideo = '';
           let memeImage = '';
@@ -713,9 +712,8 @@
                 return;
               }
             }
-            E.fields.file.value = ''; // очищаем поле
+            E.fields.file.value = '';
           } else {
-            // fallback на URL
             memeVideo = E.fields.memeVideo?.value?.trim() || '';
             memeImage = E.fields.memeImage?.value?.trim() || '';
             memeAudio = E.fields.memeAudio?.value?.trim() || '';
@@ -743,7 +741,6 @@
           item.visible = false;
           item.playing = false;
           await push(itemsRef, item);
-          // Очистка текстовых полей
           if (E.fields.memeVideo) E.fields.memeVideo.value = '';
           if (E.fields.memeImage) E.fields.memeImage.value = '';
           if (E.fields.memeAudio) E.fields.memeAudio.value = '';
@@ -775,7 +772,6 @@
           return;
         }
         if (file) {
-          // обычная загрузка одиночного файла (image/video/audio)
           const fileType = getFileType(file);
           if (!fileType) { showNotification('❌ Неподдерживаемый тип файла'); return; }
           try {
@@ -1047,7 +1043,7 @@
         const el = document.createElement('div');
         el.className = 'canvas-item';
         el.dataset.id = id;
-        // всегда показываем на холсте, видимость регулируем классом invisible
+        // Всегда показываем на холсте, видимость через класс
         el.style.display = 'flex';
         const left = (item.position?.left || 0) + OFFSET_X;
         const top = (item.position?.top || 0) + OFFSET_Y;
@@ -1082,7 +1078,7 @@
           inner.volume = item.volume || 1;
           inner.style.width = '100%';
           inner.style.height = '100%';
-          if (item.playing) inner.play();
+          // НЕ ЗАПУСКАЕМ АВТОМАТИЧЕСКИ
           el.appendChild(inner);
         } else if (item.type === 'audio' || item.type === 'tts') {
           inner = document.createElement('audio');
@@ -1100,7 +1096,7 @@
               if (activeRoomId) remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
             });
           }
-          if (item.playing) inner.play().catch(() => {});
+          // НЕ ЗАПУСКАЕМ АВТОМАТИЧЕСКИ
           el.appendChild(inner);
         } else if (item.type === 'meme') {
           if (item.memeVideo) {
@@ -1116,8 +1112,6 @@
               inner.addEventListener('ended', () => handleMemeEnded(id));
               inner.setAttribute('data-meme-ended', 'true');
             }
-            if (item.playing && inner.paused) inner.play().catch(() => {});
-            else if (!item.playing && !inner.paused) inner.pause();
             el.appendChild(inner);
           } else if (item.memeImage) {
             inner = document.createElement('img');
@@ -1140,8 +1134,6 @@
                 audioEl.setAttribute('data-meme-ended', 'true');
               }
               el.appendChild(audioEl);
-              if (item.playing && audioEl.paused) audioEl.play().catch(() => {});
-              else if (!item.playing && !audioEl.paused) audioEl.pause();
             }
           }
         } else if (item.type === 'youtube') {
@@ -1191,7 +1183,7 @@
             el.style.width = (item.size?.width || 320) + 'px';
             el.style.height = (item.size?.height || 240) + 'px';
             el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
-            // всегда показываем на холсте
+            // Всегда показываем на холсте
             el.style.display = 'flex';
             el.classList.toggle('invisible', !item.visible);
 
@@ -1202,16 +1194,12 @@
                 const audioEl = el.querySelector('audio');
                 if (videoEl) {
                   if (videoEl.src !== (item.memeVideo || '')) { videoEl.src = item.memeVideo || ''; videoEl.load(); }
-                  if (item.playing && videoEl.paused) videoEl.play().catch(() => {});
-                  else if (!item.playing && !videoEl.paused) videoEl.pause();
                   if (!videoEl.hasAttribute('data-meme-ended')) {
                     videoEl.addEventListener('ended', () => handleMemeEnded(id));
                     videoEl.setAttribute('data-meme-ended', 'true');
                   }
                 } else if (audioEl) {
                   if (audioEl.src !== (item.memeAudio || '')) { audioEl.src = item.memeAudio || ''; audioEl.load(); }
-                  if (item.playing && audioEl.paused) audioEl.play().catch(() => {});
-                  else if (!item.playing && !audioEl.paused) audioEl.pause();
                   if (!audioEl.hasAttribute('data-meme-ended')) {
                     audioEl.addEventListener('ended', () => handleMemeEnded(id));
                     audioEl.setAttribute('data-meme-ended', 'true');
@@ -1224,9 +1212,16 @@
                 inner.style.fontSize = (item.style?.fontSize||36)+'px';
                 inner.style.color = item.style?.color||'#fff';
               } else if ((item.type === 'audio' || item.type === 'tts') && inner.tagName === 'AUDIO') {
-                if (item.playing && inner.paused) inner.play().catch(() => {});
-                else if (!item.playing && !inner.paused) inner.pause();
-              } else if (inner.tagName !== 'IFRAME' && inner.tagName !== 'DIV' && inner.src !== item.url && item.type !== 'meme') {
+                // НЕ ЗАПУСКАЕМ автоматически – управление через OBS плеер
+                if (inner.src !== item.url) {
+                  inner.src = item.url;
+                }
+              } else if (inner.tagName === 'VIDEO' && item.type !== 'meme') {
+                // НЕ ЗАПУСКАЕМ автоматически
+                if (inner.src !== item.url) {
+                  inner.src = item.url;
+                }
+              } else if (inner.tagName !== 'IFRAME' && inner.tagName !== 'DIV' && inner.src !== item.url) {
                 inner.src = item.url;
                 if (inner.tagName === 'AUDIO' || inner.tagName === 'VIDEO') inner.load();
               }
@@ -1741,11 +1736,11 @@
             previewHtml = `<span style="width:48px; text-align:center;">📺</span>`;
           }
 
+          // Убраны кнопки Play – только Ред. и Удал.
           row.innerHTML = `
             ${previewHtml}
             <div><strong>${item.title||id}</strong><br/><small>${item.type}${item.hotkey ? ' ['+item.hotkey+']' : ''}</small></div>
             <div style="display:flex; gap:6px;">
-              <button class="play-item" style="width:auto; padding:4px 8px; font-size:12px;">▶️</button>
               <button class="edit-item">Ред.</button>
               <button class="delete-item danger">Удал.</button>
             </div>`;
@@ -1755,16 +1750,6 @@
             if (item && item.supabasePath) await deleteFileFromSupabase(item.supabasePath);
             await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
             if (selectedItemId === id) closeEditor();
-          };
-          row.querySelector('.play-item').onclick = () => {
-            if (item.type === 'meme') {
-              triggerMeme(id);
-            } else {
-              update(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`), {
-                playing: !item.playing,
-                visible: true
-              });
-            }
           };
           E.itemList.appendChild(row);
         });
