@@ -177,6 +177,10 @@
       background: #1a1a1a; border: 1px solid #333; border-radius: 12px;
       padding: 20px; width: 420px; max-height: 80vh; overflow-y: auto;
     }
+    .switch-label {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+    }
+    .switch-label input[type="checkbox"] { width: auto; margin-left: 8px; }
   </style>
 </head>
 <body>
@@ -288,8 +292,13 @@
                 <label>OBS 🔈</label>
                 <audio id="audio-obs" controls></audio>
               </div>
+              <!-- Хромакей -->
               <div id="chroma-settings" class="hidden" style="margin-top:8px;">
-                <label>Цвет фона (хромакей) <input type="color" id="selected-chroma-color" value="#00ff00" /></label>
+                <label class="switch-label">
+                  Хромакей (on/off)
+                  <input type="checkbox" id="selected-chroma-enabled" />
+                </label>
+                <label>Цвет фона <input type="color" id="selected-chroma-color" value="#00ff00" /></label>
                 <button id="pick-chroma-color" style="width:auto; padding:6px 12px; margin-top:4px;">Взять цвет с картинки</button>
               </div>
               <div id="media-preview-container" style="margin-bottom:8px;"></div>
@@ -300,12 +309,20 @@
               <label>URL картинки <input type="text" id="selected-meme-image" /></label>
               <label>URL звука <input type="text" id="selected-meme-audio" /></label>
               <label>Клавиша <input type="text" id="selected-meme-hotkey" maxlength="1" style="text-transform:uppercase;" /></label>
-              <label>Цвет фона (хромакей) <input type="color" id="selected-meme-chroma-color" value="#00ff00" /></label>
+              <label class="switch-label">
+                Хромакей (on/off)
+                <input type="checkbox" id="selected-meme-chroma-enabled" />
+              </label>
+              <label>Цвет фона <input type="color" id="selected-meme-chroma-color" value="#00ff00" /></label>
               <button id="pick-meme-chroma-color" style="width:auto; padding:6px 12px; margin-top:4px;">Взять цвет с картинки</button>
             </div>
           </div>
           <div class="editor-right">
-            <label><input type="checkbox" id="selected-item-visible" /> Видимый</label>
+            <!-- Видимость как ползунок -->
+            <label class="switch-label">
+              Видимый
+              <input type="checkbox" id="selected-item-visible" />
+            </label>
             <label>X <input type="number" id="selected-item-left" /></label>
             <label>Y <input type="number" id="selected-item-top" /></label>
             <label>Ширина <input type="number" id="selected-item-width" /></label>
@@ -428,7 +445,9 @@
           selectedMemeAudio: $("selected-meme-audio"),
           selectedMemeHotkey: $("selected-meme-hotkey"),
           selectedChromaColor: $("selected-chroma-color"),
+          selectedChromaEnabled: $("selected-chroma-enabled"),
           selectedMemeChromaColor: $("selected-meme-chroma-color"),
+          selectedMemeChromaEnabled: $("selected-meme-chroma-enabled"),
         },
         textSettings: $("text-settings"),
         mediaSettings: $("media-settings"),
@@ -538,7 +557,6 @@
           E.overlayStatusText.textContent = online ? 'Оверлей подключён' : 'Оверлей не подключён';
         }
       });
-      // В режиме оверлея отправляем heartbeat
       if (mode === 'overlay') {
         setInterval(() => {
           set(ref(db, "overlay/status/heartbeat"), Date.now());
@@ -706,6 +724,7 @@
           memeImage: payload.memeImage || null,
           memeAudio: payload.memeAudio || null,
           chromaColor: payload.chromaColor || null,
+          chromaEnabled: payload.chromaEnabled || false,
           ...payload
         };
       }
@@ -999,7 +1018,7 @@
       }
       on(E.fields.type, 'change', handleNewTypeChange);
 
-      // ================== ХОЛСТ (БЕЗ ЗВУКА, С ПРЕВЬЮ) ==================
+      // ================== ХОЛСТ ==================
       function updateSelectionHandles() {
         document.querySelectorAll('.canvas-item .resize-handle, .canvas-item .rotate-handle').forEach(h => h.remove());
         document.querySelectorAll('.canvas-item.selected').forEach(el => el.classList.remove('selected'));
@@ -1303,8 +1322,8 @@
       }
 
       // ================== ХРОМАКЕЙ ==================
-      function applyChromaFilter(el, colorHex, id) {
-        if (!colorHex) {
+      function applyChromaFilter(el, colorHex, id, enabled) {
+        if (!enabled || !colorHex) {
           el.style.filter = '';
           return;
         }
@@ -1356,6 +1375,7 @@
           E.mediaSettings.classList.remove('hidden');
           E.chromaSettings.classList.remove('hidden');
           if (E.fields.selectedChromaColor) E.fields.selectedChromaColor.value = item.chromaColor || '#00ff00';
+          if (E.fields.selectedChromaEnabled) E.fields.selectedChromaEnabled.checked = item.chromaEnabled === true;
           if (item.type === 'video') {
             E.mediaPreview.innerHTML = `<video src="${item.url}" controls style="width:100%; max-height:200px;"></video>`;
           }
@@ -1366,6 +1386,7 @@
           if (E.fields.selectedMemeAudio) E.fields.selectedMemeAudio.value = item.memeAudio || '';
           if (E.fields.selectedMemeHotkey) E.fields.selectedMemeHotkey.value = item.hotkey || '';
           if (E.fields.selectedMemeChromaColor) E.fields.selectedMemeChromaColor.value = item.chromaColor || '#00ff00';
+          if (E.fields.selectedMemeChromaEnabled) E.fields.selectedMemeChromaEnabled.checked = item.chromaEnabled === true;
         } else if (item.type === 'youtube') {
           E.mediaSettings.classList.remove('hidden');
           const iframe = document.createElement('iframe');
@@ -1401,6 +1422,7 @@
         }
         if (item.type === 'image' || item.type === 'video') {
           upd.chromaColor = E.fields.selectedChromaColor?.value || null;
+          upd.chromaEnabled = E.fields.selectedChromaEnabled?.checked || false;
         }
         if (item.type === 'meme') {
           upd.memeVideo = E.fields.selectedMemeVideo?.value?.trim() || null;
@@ -1408,6 +1430,7 @@
           upd.memeAudio = E.fields.selectedMemeAudio?.value?.trim() || null;
           upd.hotkey = E.fields.selectedMemeHotkey?.value?.trim().toUpperCase() || null;
           upd.chromaColor = E.fields.selectedMemeChromaColor?.value || null;
+          upd.chromaEnabled = E.fields.selectedMemeChromaEnabled?.checked || false;
         }
         await update(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}`), upd);
         showNotification('✅ Изменения сохранены');
@@ -1481,14 +1504,14 @@
             inner = document.createElement('img');
             inner.src = item.url;
             inner.style.width = '100%'; inner.style.height = '100%'; inner.style.objectFit = 'fill';
-            if (item.chromaColor) applyChromaFilter(inner, item.chromaColor, id);
+            if (item.chromaEnabled) applyChromaFilter(inner, item.chromaColor, id, true);
             el.appendChild(inner);
           } else if (item.type === 'video') {
             inner = document.createElement('video');
             inner.src = item.url;
             inner.autoplay = false; inner.loop = true; inner.muted = false; inner.volume = item.volume || 1;
             inner.style.width = '100%'; inner.style.height = '100%';
-            if (item.chromaColor) applyChromaFilter(inner, item.chromaColor, id);
+            if (item.chromaEnabled) applyChromaFilter(inner, item.chromaColor, id, true);
             if (item.playing) inner.play();
             el.appendChild(inner);
           } else if (item.type === 'audio' || item.type === 'tts') {
@@ -1505,7 +1528,7 @@
               inner.src = item.memeVideo;
               inner.autoplay = false; inner.loop = false; inner.muted = false; inner.volume = item.volume || 1;
               inner.style.width = '100%'; inner.style.height = '100%'; inner.playsInline = true;
-              if (item.chromaColor) applyChromaFilter(inner, item.chromaColor, id);
+              if (item.chromaEnabled) applyChromaFilter(inner, item.chromaColor, id, true);
               inner.addEventListener('ended', () => handleMemeEnded(id));
               if (item.playing) inner.play().catch(() => {});
               el.appendChild(inner);
@@ -1513,7 +1536,7 @@
               inner = document.createElement('img');
               inner.src = item.memeImage;
               inner.style.width = '100%'; inner.style.height = '100%'; inner.style.objectFit = 'fill';
-              if (item.chromaColor) applyChromaFilter(inner, item.chromaColor, id);
+              if (item.chromaEnabled) applyChromaFilter(inner, item.chromaColor, id, true);
               el.appendChild(inner);
               if (item.memeAudio) {
                 const audioEl = document.createElement('audio');
