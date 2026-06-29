@@ -1040,202 +1040,212 @@
       }
 
       function buildCanvasItem(id, item) {
-        const el = document.createElement('div');
-        el.className = 'canvas-item';
-        el.dataset.id = id;
-        // Всегда показываем на холсте, видимость через класс
-        el.style.display = 'flex';
-        const left = (item.position?.left || 0) + OFFSET_X;
-        const top = (item.position?.top || 0) + OFFSET_Y;
-        el.style.left = left + 'px';
-        el.style.top = top + 'px';
-        el.style.width = (item.size?.width || 320) + 'px';
-        el.style.height = (item.size?.height || 240) + 'px';
-        el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
+  const el = document.createElement('div');
+  el.className = 'canvas-item';
+  el.dataset.id = id;
+  // Всегда показываем на холсте, видимость через класс
+  el.style.display = 'flex';
+  const left = (item.position?.left || 0) + OFFSET_X;
+  const top = (item.position?.top || 0) + OFFSET_Y;
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+  el.style.width = (item.size?.width || 320) + 'px';
+  el.style.height = (item.size?.height || 240) + 'px';
+  el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
 
-        if (!item.visible) el.classList.add('invisible');
+  if (!item.visible) el.classList.add('invisible');
 
-        let inner;
-        if (item.type === 'image') {
-          inner = document.createElement('img');
-          inner.src = item.url;
-          inner.style.width = '100%';
-          inner.style.height = '100%';
-          inner.style.objectFit = 'fill';
-          inner.onerror = () => {
-            inner.style.display = 'none';
-            const broken = document.createElement('div');
-            broken.className = 'broken-image';
-            broken.textContent = '🖼️❌';
-            el.appendChild(broken);
-          };
-          el.appendChild(inner);
-        } else if (item.type === 'video') {
-          inner = document.createElement('video');
-          inner.src = item.url;
-          inner.loop = true;
-          inner.muted = false;
-          inner.volume = item.volume || 1;
-          inner.style.width = '100%';
-          inner.style.height = '100%';
-          // НЕ ЗАПУСКАЕМ АВТОМАТИЧЕСКИ
-          el.appendChild(inner);
-        } else if (item.type === 'audio' || item.type === 'tts') {
-          inner = document.createElement('audio');
-          inner.src = item.url;
-          inner.controls = false;
-          inner.autoplay = false;
-          inner.loop = false;
-          inner.muted = false;
-          inner.volume = item.volume || 1;
-          inner.preload = 'auto';
-          inner.style.width = '100%';
-          inner.style.height = '100%';
-          if (item.type === 'tts') {
-            inner.addEventListener('ended', () => {
-              if (activeRoomId) remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
-            });
-          }
-          // НЕ ЗАПУСКАЕМ АВТОМАТИЧЕСКИ
-          el.appendChild(inner);
-        } else if (item.type === 'meme') {
-          if (item.memeVideo) {
-            inner = document.createElement('video');
-            inner.src = item.memeVideo;
-            inner.loop = false;
-            inner.muted = false;
-            inner.volume = item.volume || 1;
-            inner.style.width = '100%';
-            inner.style.height = '100%';
-            inner.playsInline = true;
-            if (!inner.hasAttribute('data-meme-ended')) {
-              inner.addEventListener('ended', () => handleMemeEnded(id));
-              inner.setAttribute('data-meme-ended', 'true');
+  let inner;
+  if (item.type === 'image') {
+    inner = document.createElement('img');
+    inner.src = item.url;
+    inner.style.width = '100%';
+    inner.style.height = '100%';
+    inner.style.objectFit = 'fill';
+    inner.onerror = () => {
+      inner.style.display = 'none';
+      const broken = document.createElement('div');
+      broken.className = 'broken-image';
+      broken.textContent = '🖼️❌';
+      el.appendChild(broken);
+    };
+    el.appendChild(inner);
+  } else if (item.type === 'video') {
+    inner = document.createElement('video');
+    inner.src = item.url;
+    inner.loop = true;
+    inner.muted = false;
+    inner.volume = item.volume || 1;
+    inner.style.width = '100%';
+    inner.style.height = '100%';
+    // НЕ ЗАПУСКАЕМ – только отображаем
+    el.appendChild(inner);
+  } else if (item.type === 'audio' || item.type === 'tts') {
+    inner = document.createElement('audio');
+    inner.src = item.url;
+    inner.controls = false;
+    inner.autoplay = false;
+    inner.loop = false;
+    inner.muted = false;
+    inner.volume = item.volume || 1;
+    inner.preload = 'auto';
+    inner.style.width = '100%';
+    inner.style.height = '100%';
+    if (item.type === 'tts') {
+      inner.addEventListener('ended', () => {
+        if (activeRoomId) remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
+      });
+    }
+    // НЕ ЗАПУСКАЕМ
+    el.appendChild(inner);
+  } else if (item.type === 'meme') {
+    if (item.memeVideo) {
+      inner = document.createElement('video');
+      inner.src = item.memeVideo;
+      inner.loop = false;
+      inner.muted = false;
+      inner.volume = item.volume || 1;
+      inner.style.width = '100%';
+      inner.style.height = '100%';
+      inner.playsInline = true;
+      if (!inner.hasAttribute('data-meme-ended')) {
+        inner.addEventListener('ended', () => handleMemeEnded(id));
+        inner.setAttribute('data-meme-ended', 'true');
+      }
+      el.appendChild(inner);
+    } else if (item.memeImage) {
+      inner = document.createElement('img');
+      inner.src = item.memeImage;
+      inner.style.width = '100%';
+      inner.style.height = '100%';
+      inner.style.objectFit = 'fill';
+      el.appendChild(inner);
+      if (item.memeAudio) {
+        const audioEl = document.createElement('audio');
+        audioEl.src = item.memeAudio;
+        audioEl.controls = false;
+        audioEl.loop = false;
+        audioEl.muted = false;
+        audioEl.volume = item.volume || 1;
+        audioEl.preload = 'auto';
+        audioEl.style.display = 'none';
+        if (!audioEl.hasAttribute('data-meme-ended')) {
+          audioEl.addEventListener('ended', () => handleMemeEnded(id));
+          audioEl.setAttribute('data-meme-ended', 'true');
+        }
+        el.appendChild(audioEl);
+      }
+    }
+  } else if (item.type === 'youtube') {
+    inner = document.createElement('iframe');
+    inner.src = item.url;
+    inner.frameBorder = "0";
+    inner.setAttribute('allowfullscreen', 'true');
+    inner.id = `youtube-${id}`;
+    inner.style.width = '100%';
+    inner.style.height = '100%';
+    el.appendChild(inner);
+  } else if (item.type === 'text') {
+    inner = document.createElement('div');
+    inner.className = 'overlay-text';
+    inner.textContent = item.text;
+    inner.style.fontSize = (item.style?.fontSize||36)+'px';
+    inner.style.color = item.style?.color||'#fff';
+    inner.style.fontWeight = item.style?.bold ? '700' : '400';
+    inner.style.fontStyle = item.style?.italic ? 'italic' : 'normal';
+    inner.style.textDecoration = item.style?.strike ? 'line-through' : 'none';
+    el.appendChild(inner);
+  }
+  el.addEventListener('pointerdown', canvasPointerDown);
+  return el;
+}
+
+     function refreshCanvas() {
+  if (!E.canvas) return;
+  const currentSelected = selectedItemId;
+  const existing = {};
+  E.canvas.querySelectorAll('.canvas-item').forEach(el => { existing[el.dataset.id] = el; });
+  const newIds = new Set(Object.keys(items));
+  for (const id in existing) {
+    if (!newIds.has(id)) existing[id].remove();
+  }
+  Object.entries(items).forEach(([id, item]) => {
+    if (!item) return;
+    let el = existing[id];
+    if (!el) {
+      el = buildCanvasItem(id, item);
+      E.canvas.appendChild(el);
+    } else {
+      const left = (item.position?.left || 0) + OFFSET_X;
+      const top = (item.position?.top || 0) + OFFSET_Y;
+      el.style.left = left + 'px';
+      el.style.top = top + 'px';
+      el.style.width = (item.size?.width || 320) + 'px';
+      el.style.height = (item.size?.height || 240) + 'px';
+      el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
+      // Всегда показываем на холсте
+      el.style.display = 'flex';
+      el.classList.toggle('invisible', !item.visible);
+
+      const inner = el.querySelector('img, video, iframe, .overlay-text');
+      if (inner) {
+        if (item.type === 'meme') {
+          const videoEl = el.querySelector('video');
+          const audioEl = el.querySelector('audio');
+          if (videoEl) {
+            if (videoEl.src !== (item.memeVideo || '')) { videoEl.src = item.memeVideo || ''; videoEl.load(); }
+            // не запускаем, только обновляем src
+            if (!videoEl.hasAttribute('data-meme-ended')) {
+              videoEl.addEventListener('ended', () => handleMemeEnded(id));
+              videoEl.setAttribute('data-meme-ended', 'true');
             }
-            el.appendChild(inner);
-          } else if (item.memeImage) {
-            inner = document.createElement('img');
-            inner.src = item.memeImage;
-            inner.style.width = '100%';
-            inner.style.height = '100%';
-            inner.style.objectFit = 'fill';
-            el.appendChild(inner);
-            if (item.memeAudio) {
-              const audioEl = document.createElement('audio');
-              audioEl.src = item.memeAudio;
-              audioEl.controls = false;
-              audioEl.loop = false;
-              audioEl.muted = false;
-              audioEl.volume = item.volume || 1;
-              audioEl.preload = 'auto';
-              audioEl.style.display = 'none';
-              if (!audioEl.hasAttribute('data-meme-ended')) {
-                audioEl.addEventListener('ended', () => handleMemeEnded(id));
-                audioEl.setAttribute('data-meme-ended', 'true');
-              }
-              el.appendChild(audioEl);
+          } else if (audioEl) {
+            if (audioEl.src !== (item.memeAudio || '')) { audioEl.src = item.memeAudio || ''; audioEl.load(); }
+            if (!audioEl.hasAttribute('data-meme-ended')) {
+              audioEl.addEventListener('ended', () => handleMemeEnded(id));
+              audioEl.setAttribute('data-meme-ended', 'true');
             }
           }
-        } else if (item.type === 'youtube') {
-          inner = document.createElement('iframe');
-          inner.src = item.url;
-          inner.frameBorder = "0";
-          inner.setAttribute('allowfullscreen', 'true');
-          inner.id = `youtube-${id}`;
-          inner.style.width = '100%';
-          inner.style.height = '100%';
-          el.appendChild(inner);
-        } else if (item.type === 'text') {
-          inner = document.createElement('div');
-          inner.className = 'overlay-text';
+          const imgEl = el.querySelector('img');
+          if (imgEl && imgEl.src !== (item.memeImage || '')) imgEl.src = item.memeImage || '';
+        } else if (item.type === 'text' && inner.classList.contains('overlay-text')) {
           inner.textContent = item.text;
           inner.style.fontSize = (item.style?.fontSize||36)+'px';
           inner.style.color = item.style?.color||'#fff';
-          inner.style.fontWeight = item.style?.bold ? '700' : '400';
-          inner.style.fontStyle = item.style?.italic ? 'italic' : 'normal';
-          inner.style.textDecoration = item.style?.strike ? 'line-through' : 'none';
-          el.appendChild(inner);
-        }
-        el.addEventListener('pointerdown', canvasPointerDown);
-        return el;
-      }
-
-      function refreshCanvas() {
-        if (!E.canvas) return;
-        const currentSelected = selectedItemId;
-        const existing = {};
-        E.canvas.querySelectorAll('.canvas-item').forEach(el => { existing[el.dataset.id] = el; });
-        const newIds = new Set(Object.keys(items));
-        for (const id in existing) {
-          if (!newIds.has(id)) existing[id].remove();
-        }
-        Object.entries(items).forEach(([id, item]) => {
-          if (!item) return;
-          let el = existing[id];
-          if (!el) {
-            el = buildCanvasItem(id, item);
-            E.canvas.appendChild(el);
-          } else {
-            const left = (item.position?.left || 0) + OFFSET_X;
-            const top = (item.position?.top || 0) + OFFSET_Y;
-            el.style.left = left + 'px';
-            el.style.top = top + 'px';
-            el.style.width = (item.size?.width || 320) + 'px';
-            el.style.height = (item.size?.height || 240) + 'px';
-            el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
-            // Всегда показываем на холсте
-            el.style.display = 'flex';
-            el.classList.toggle('invisible', !item.visible);
-
-            const inner = el.querySelector('img, video, iframe, .overlay-text');
-            if (inner) {
-              if (item.type === 'meme') {
-                const videoEl = el.querySelector('video');
-                const audioEl = el.querySelector('audio');
-                if (videoEl) {
-                  if (videoEl.src !== (item.memeVideo || '')) { videoEl.src = item.memeVideo || ''; videoEl.load(); }
-                  if (!videoEl.hasAttribute('data-meme-ended')) {
-                    videoEl.addEventListener('ended', () => handleMemeEnded(id));
-                    videoEl.setAttribute('data-meme-ended', 'true');
-                  }
-                } else if (audioEl) {
-                  if (audioEl.src !== (item.memeAudio || '')) { audioEl.src = item.memeAudio || ''; audioEl.load(); }
-                  if (!audioEl.hasAttribute('data-meme-ended')) {
-                    audioEl.addEventListener('ended', () => handleMemeEnded(id));
-                    audioEl.setAttribute('data-meme-ended', 'true');
-                  }
-                }
-                const imgEl = el.querySelector('img');
-                if (imgEl && imgEl.src !== (item.memeImage || '')) imgEl.src = item.memeImage || '';
-              } else if (item.type === 'text' && inner.classList.contains('overlay-text')) {
-                inner.textContent = item.text;
-                inner.style.fontSize = (item.style?.fontSize||36)+'px';
-                inner.style.color = item.style?.color||'#fff';
-              } else if ((item.type === 'audio' || item.type === 'tts') && inner.tagName === 'AUDIO') {
-                // НЕ ЗАПУСКАЕМ автоматически – управление через OBS плеер
-                if (inner.src !== item.url) {
-                  inner.src = item.url;
-                }
-              } else if (inner.tagName === 'VIDEO' && item.type !== 'meme') {
-                // НЕ ЗАПУСКАЕМ автоматически
-                if (inner.src !== item.url) {
-                  inner.src = item.url;
-                }
-              } else if (inner.tagName !== 'IFRAME' && inner.tagName !== 'DIV' && inner.src !== item.url) {
-                inner.src = item.url;
-                if (inner.tagName === 'AUDIO' || inner.tagName === 'VIDEO') inner.load();
-              }
+        } else if (item.type === 'audio' || item.type === 'tts') {
+          if (inner.tagName === 'AUDIO') {
+            if (inner.src !== item.url) {
+              inner.src = item.url;
+            }
+            // Гарантированно останавливаем, если вдруг играет
+            if (!inner.paused) {
+              inner.pause();
             }
           }
-        });
-        if (currentSelected && items[currentSelected]) {
-          selectedItemId = currentSelected;
-          updateSelectionHandles();
+        } else if (item.type === 'video') {
+          if (inner.tagName === 'VIDEO') {
+            if (inner.src !== item.url) {
+              inner.src = item.url;
+            }
+            if (!inner.paused) {
+              inner.pause();
+            }
+          }
+        } else if (inner.tagName !== 'IFRAME' && inner.tagName !== 'DIV' && inner.src !== item.url) {
+          inner.src = item.url;
+          if (inner.tagName === 'AUDIO' || inner.tagName === 'VIDEO') inner.load();
         }
-        youtubePlayer = null;
-        youtubeReady = false;
-        updateMemeHotkeyMap();
       }
+    }
+  });
+  if (currentSelected && items[currentSelected]) {
+    selectedItemId = currentSelected;
+    updateSelectionHandles();
+  }
+  youtubePlayer = null;
+  youtubeReady = false;
+  updateMemeHotkeyMap();
+}
 
       function getCanvasCoords(e) { if (!E.canvas) return { x: 0, y: 0 }; const rect = E.canvas.getBoundingClientRect(); return { x: (e.clientX - rect.left) / currentScale, y: (e.clientY - rect.top) / currentScale }; }
       function highlightItem(id) { if (selectedItemId === id) return; selectedItemId = id; updateSelectionHandles(); }
