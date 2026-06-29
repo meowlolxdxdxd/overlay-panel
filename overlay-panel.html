@@ -400,38 +400,42 @@
 
       // ========== НОВЫЙ ФИЛЬТР ХРОМАКЕЯ (удаляет выбранный цвет, делая его прозрачным) ==========
       function createChromaFilter(colorHex, id) {
-        const existing = document.getElementById('chroma-filter-' + id);
-        if (existing) existing.remove();
-        const r = parseInt(colorHex.slice(1,3), 16) / 255;
-        const g = parseInt(colorHex.slice(3,5), 16) / 255;
-        const b = parseInt(colorHex.slice(5,7), 16) / 255;
-        const svg = `
-          <filter id="chroma-filter-${id}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-            <feColorMatrix type="matrix" values="
-              1 0 0 0 ${-r}
-              0 1 0 0 ${-g}
-              0 0 1 0 ${-b}
-              0 0 0 1 0
-            " in="SourceGraphic" result="diff" />
-            <feColorMatrix type="matrix" values="
-              0.2126 0.7152 0.0722 0 0
-              0.2126 0.7152 0.0722 0 0
-              0.2126 0.7152 0.0722 0 0
-              0      0      0      1 0
-            " in="diff" result="gray" />
-            <feComponentTransfer in="gray" result="mask">
-              <feFuncA type="linear" slope="10" intercept="-0.5" />
-            </feComponentTransfer>
-            <feComposite operator="in" in="SourceGraphic" in2="mask" />
-          </filter>`;
-        const defs = document.querySelector('defs#chroma-defs') || (() => {
-          const d = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-          d.id = 'chroma-defs';
-          document.body.prepend(d);
-          return d;
-        })();
-        defs.insertAdjacentHTML('beforeend', svg);
-      }
+  const existing = document.getElementById('chroma-filter-' + id);
+  if (existing) existing.remove();
+  const r = parseInt(colorHex.slice(1,3), 16) / 255;
+  const g = parseInt(colorHex.slice(3,5), 16) / 255;
+  const b = parseInt(colorHex.slice(5,7), 16) / 255;
+  const svg = `
+    <filter id="chroma-filter-${id}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <!-- Преобразуем в цветовое пространство, где легко выделить ключевой цвет -->
+      <feColorMatrix type="matrix" values="
+        1 0 0 0 ${-r}
+        0 1 0 0 ${-g}
+        0 0 1 0 ${-b}
+        0 0 0 1 0
+      " in="SourceGraphic" result="diff" />
+      <!-- Преобразуем разность в оттенки серого -->
+      <feColorMatrix type="matrix" values="
+        0.3333 0.3333 0.3333 0 0
+        0.3333 0.3333 0.3333 0 0
+        0.3333 0.3333 0.3333 0 0
+        0      0      0      1 0
+      " in="diff" result="gray" />
+      <!-- Создаём альфа‑маску: где серый близок к 0 (цвет совпадает) – делаем прозрачным -->
+      <feComponentTransfer in="gray" result="mask">
+        <feFuncA type="linear" slope="20" intercept="-0.2" />
+      </feComponentTransfer>
+      <!-- Применяем маску к исходному изображению -->
+      <feComposite operator="in" in="SourceGraphic" in2="mask" />
+    </filter>`;
+  const defs = document.querySelector('defs#chroma-defs') || (() => {
+    const d = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    d.id = 'chroma-defs';
+    document.body.prepend(d);
+    return d;
+  })();
+  defs.insertAdjacentHTML('beforeend', svg);
+}
 
       const E = {
         overlayContainer: $("overlay-container"),
@@ -500,7 +504,7 @@
         newRoomBtn: $("new-room-btn"),
         overlayLink: $("overlay-link"),
         copyLinkBtn: $("copy-link-btn"),
-        mediaPreview: null,
+        mediaPreview: $("media-preview-container"),
         audioPreview: $("audio-preview"),
         audioObs: $("audio-obs"),
         audioPreviewBox: $("audio-preview-box"),
