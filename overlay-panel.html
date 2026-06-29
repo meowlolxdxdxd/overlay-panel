@@ -103,6 +103,10 @@
     .canvas-item { position: absolute; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; overflow: visible; cursor: grab; user-select: none; border: 2px solid transparent; }
     .canvas-item.selected { border: 2px solid #9147ff; z-index: 10; }
     .canvas-item img, .canvas-item video { width: 100%; height: 100%; object-fit: fill; display: block; border-radius: 6px; }
+    .canvas-item .canvas-placeholder {
+      width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 24px;
+    }
     .canvas-item.invisible {
       opacity: 0.35;
       border-style: dashed;
@@ -186,7 +190,6 @@
         <label>Активная комната:</label>
         <div id="room-slots" style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;"></div>
         <button id="new-room-btn" style="width:auto; padding:6px 12px;">+ Новая комната</button>
-        <!-- Индикатор подключения оверлея -->
         <div style="margin-left:12px; display:flex; align-items:center; gap:8px;">
           <span id="overlay-status-dot" style="width:12px; height:12px; border-radius:50%; background:red; display:inline-block;"></span>
           <span id="overlay-status-text" style="font-size:13px;">Оверлей не подключён</span>
@@ -285,7 +288,6 @@
                 <label>OBS 🔈</label>
                 <audio id="audio-obs" controls></audio>
               </div>
-              <!-- Хромакей -->
               <div id="chroma-settings" class="hidden" style="margin-top:8px;">
                 <label>Цвет фона (хромакей) <input type="color" id="selected-chroma-color" value="#00ff00" /></label>
                 <button id="pick-chroma-color" style="width:auto; padding:6px 12px; margin-top:4px;">Взять цвет с картинки</button>
@@ -528,7 +530,7 @@
       const overlayStatusRef = ref(db, "overlay/status");
       onValue(ref(db, "overlay/status/heartbeat"), (snap) => {
         const ts = snap.val();
-        const online = ts && (Date.now() - ts < 4000); // 4 секунды – считается онлайн
+        const online = ts && (Date.now() - ts < 4000);
         if (E.overlayStatusDot) {
           E.overlayStatusDot.style.background = online ? '#4caf50' : '#f44336';
         }
@@ -536,7 +538,7 @@
           E.overlayStatusText.textContent = online ? 'Оверлей подключён' : 'Оверлей не подключён';
         }
       });
-      // Если мы в режиме оверлея, отправляем heartbeat
+      // В режиме оверлея отправляем heartbeat
       if (mode === 'overlay') {
         setInterval(() => {
           set(ref(db, "overlay/status/heartbeat"), Date.now());
@@ -1045,7 +1047,7 @@
           inner.style.height = '100%';
           inner.style.objectFit = 'fill';
           if (tag === 'video') {
-            inner.muted = true;   // без звука на холсте
+            inner.muted = true;
             inner.loop = true;
             inner.playsInline = true;
             inner.autoplay = false;
@@ -1059,7 +1061,6 @@
           };
           el.appendChild(inner);
         } else {
-          // иконка для аудио/TTS/YouTube
           const placeholder = document.createElement('div');
           placeholder.className = 'canvas-placeholder';
           if (item.type === 'audio' || item.type === 'tts') placeholder.innerHTML = '🎵';
@@ -1099,7 +1100,7 @@
             if (previewUrl && inner && inner.src !== previewUrl) {
               inner.src = previewUrl;
             } else if (!previewUrl && inner) {
-              inner.remove(); // переключились на тип без превью
+              inner.remove();
               const placeholder = document.createElement('div');
               placeholder.className = 'canvas-placeholder';
               if (item.type === 'audio' || item.type === 'tts') placeholder.innerHTML = '🎵';
@@ -1177,12 +1178,129 @@
         window.removeEventListener('pointermove', canvasPointerMove);
       }
 
-      function resizeStart(e, direction) { /* ... код без изменений ... */ } // предполагаем, что он уже есть
-      function resizeMove(e) { /* ... */ }
-      function resizeEnd() { /* ... */ }
-      function rotateStart(e) { /* ... */ }
-      function rotateMove(e) { /* ... */ }
-      function rotateEnd() { /* ... */ }
+      function resizeStart(e, direction) {
+        const el = e.currentTarget?.parentElement ? e.currentTarget.parentElement : e.currentTarget;
+        const id = el.dataset.id;
+        if (!id) return;
+        e.stopPropagation();
+        const coords = getCanvasCoords(e);
+        const origW = parseFloat(el.style.width);
+        const origH = parseFloat(el.style.height);
+        resizeState = {
+          id, el, dir: direction,
+          startX: coords.x, startY: coords.y,
+          origW, origH,
+          origLeft: parseFloat(el.style.left), origTop: parseFloat(el.style.top)
+        };
+        if (e.pointerId !== undefined) el.setPointerCapture(e.pointerId);
+        window.addEventListener('pointermove', resizeMove);
+        window.addEventListener('pointerup', resizeEnd, { once: true });
+        el.style.borderStyle = ''; el.style.borderColor = '';
+      }
+
+      function resizeMove(e) {
+        if (!resizeState) return;
+        const coords = getCanvasCoords(e);
+        const dx = coords.x - resizeState.startX;
+        const dy = coords.y - resizeState.startY;
+        let newW = resizeState.origW, newH = resizeState.origH;
+        let newLeft = resizeState.origLeft, newTop = resizeState.origTop;
+        const dir = resizeState.dir;
+
+        let fixedLeft = false, fixedRight = false, fixedTop = false, fixedBottom = false;
+        if (dir.includes('e')) { fixedLeft = true; }
+        if (dir.includes('w')) { fixedRight = true; }
+        if (dir.includes('s')) { fixedTop = true; }
+        if (dir.includes('n')) { fixedBottom = true; }
+
+        if (dir.includes('e')) newW = resizeState.origW + dx;
+        if (dir.includes('w')) newW = resizeState.origW - dx;
+        if (dir.includes('s')) newH = resizeState.origH + dy;
+        if (dir.includes('n')) newH = resizeState.origH - dy;
+
+        if (!e.shiftKey) {
+          const origRatio = resizeState.origW / resizeState.origH;
+          if (dir === 'e' || dir === 'w') { newH = newW / origRatio; }
+          else if (dir === 'n' || dir === 's') { newW = newH * origRatio; }
+          else {
+            const dw = Math.abs(newW - resizeState.origW);
+            const dh = Math.abs(newH - resizeState.origH);
+            if (dw > dh) { newH = newW / origRatio; }
+            else { newW = newH * origRatio; }
+          }
+        }
+        newW = Math.max(20, newW);
+        newH = Math.max(20, newH);
+        if (fixedLeft) { newLeft = resizeState.origLeft + (newW - resizeState.origW) / 2; }
+        else if (fixedRight) { newLeft = resizeState.origLeft - (newW - resizeState.origW) / 2; }
+        if (fixedTop) { newTop = resizeState.origTop + (newH - resizeState.origH) / 2; }
+        else if (fixedBottom) { newTop = resizeState.origTop - (newH - resizeState.origH) / 2; }
+
+        resizeState.el.style.width = newW + 'px';
+        resizeState.el.style.height = newH + 'px';
+        resizeState.el.style.left = newLeft + 'px';
+        resizeState.el.style.top = newTop + 'px';
+
+        const item = items[resizeState.id];
+        if (item) {
+          item.size = { width: newW, height: newH };
+          item.position = { left: newLeft - OFFSET_X, top: newTop - OFFSET_Y };
+          update(ref(db, `overlay/rooms/${activeRoomId}/items/${resizeState.id}`), { size: item.size, position: item.position });
+        }
+      }
+
+      function resizeEnd() {
+        if (!resizeState) return;
+        const { el } = resizeState;
+        el.style.borderStyle = ''; el.style.borderColor = '';
+        resizeState = null;
+        window.removeEventListener('pointermove', resizeMove);
+      }
+
+      function rotateStart(e) {
+        const el = e.currentTarget.parentElement;
+        const id = el.dataset.id;
+        if (!id) return;
+        e.stopPropagation();
+        const centerX = parseFloat(el.style.left);
+        const centerY = parseFloat(el.style.top);
+        rotateState = { id, el, centerX, centerY };
+        e.currentTarget.setPointerCapture(e.pointerId);
+        window.addEventListener('pointermove', rotateMove);
+        window.addEventListener('pointerup', rotateEnd, { once: true });
+      }
+
+      function rotateMove(e) {
+        if (!rotateState) return;
+        const coords = getCanvasCoords(e);
+        const dx = coords.x - rotateState.centerX;
+        const dy = coords.y - rotateState.centerY;
+        let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+        if (e.shiftKey) { const snap = 15; angle = Math.round(angle / snap) * snap; }
+        angle = Math.round(angle);
+        rotateState.el.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
+        try { update(ref(db, `overlay/rooms/${activeRoomId}/items/${rotateState.id}`), { rotation: angle }); } catch(e) {}
+      }
+
+      function rotateEnd() {
+        if (!rotateState) return;
+        const match = rotateState.el.style.transform.match(/rotate\(([-\d.]+)deg\)/);
+        const newAngle = match ? parseFloat(match[1]) : 0;
+        update(ref(db, `overlay/rooms/${activeRoomId}/items/${rotateState.id}`), { rotation: newAngle });
+        rotateState = null;
+        window.removeEventListener('pointermove', rotateMove);
+      }
+
+      async function loadYouTubeAPI() {
+        if (window.YT && window.YT.Player) return true;
+        return new Promise((resolve) => {
+          const tag = document.createElement('script');
+          tag.src = "https://www.youtube.com/iframe_api";
+          const firstScriptTag = document.getElementsByTagName('script')[0];
+          firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+          window.onYouTubeIframeAPIReady = () => resolve(true);
+        });
+      }
 
       // ================== ХРОМАКЕЙ ==================
       function applyChromaFilter(el, colorHex, id) {
@@ -1194,13 +1312,8 @@
         el.style.filter = `url(#chroma-filter-${id})`;
       }
 
-      // Пипетка (упрощённая – открывает встроенный палитру и предлагает выбрать)
-      on(E.pickChromaColor, 'click', () => {
-        E.fields.selectedChromaColor?.click();
-      });
-      on(E.pickMemeChromaColor, 'click', () => {
-        E.fields.selectedMemeChromaColor?.click();
-      });
+      on(E.pickChromaColor, 'click', () => { E.fields.selectedChromaColor?.click(); });
+      on(E.pickMemeChromaColor, 'click', () => { E.fields.selectedMemeChromaColor?.click(); });
 
       // ================== РЕДАКТОР ==================
       function selectItem(id) {
@@ -1300,6 +1413,49 @@
         showNotification('✅ Изменения сохранены');
       }
 
+      async function handleDeleteItem() {
+        if (!selectedItemId) return;
+        const item = items[selectedItemId];
+        if (item && item.supabasePath) await deleteFileFromSupabase(item.supabasePath);
+        await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}`));
+        closeEditor();
+      }
+
+      async function handleCenterItem() {
+        if (!selectedItemId) return;
+        await update(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}/position`), { left: 0, top: 0 });
+      }
+
+      function closeEditor() {
+        selectedItemId = null;
+        removeObsAudioListeners();
+        E.itemEditor.classList.add('hidden');
+        updateSelectionHandles();
+        youtubePlayer = null;
+        youtubeReady = false;
+      }
+
+      on(E.canvas, 'click', (e) => { if (e.target === E.canvas || !e.target.closest('.canvas-item')) closeEditor(); });
+      on(E.saveItemButton, 'click', handleSaveItem);
+      on(E.deleteItemButton, 'click', handleDeleteItem);
+      on(E.centerItemButton, 'click', handleCenterItem);
+      on(E.closeEditorButton, 'click', closeEditor);
+
+      function enableDragDrop() {
+        if (window._dragDropEnabled) return;
+        window._dragDropEnabled = true;
+        document.body.addEventListener('dragover', e => { e.preventDefault(); if (E.controlInterface && !E.controlInterface.classList.contains('hidden')) document.body.style.outline = '3px dashed #9147ff'; });
+        document.body.addEventListener('dragleave', () => { document.body.style.outline = ''; });
+        document.body.addEventListener('drop', async e => {
+          e.preventDefault(); document.body.style.outline = '';
+          if (E.controlInterface?.classList.contains('hidden')) return;
+          if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
+          const files = e.dataTransfer?.files;
+          if (!files?.length) return;
+          for (const file of files) await handleFileSelected(file);
+        });
+      }
+
       // ================== ОВЕРЛЕЙ ==================
       function refreshOverlay() {
         if (!E.stageElement) return;
@@ -1389,9 +1545,82 @@
         });
       }
 
-      // (остальные функции refreshItemList, overlayPointerDown, showMode и т.д. остаются как в предыдущей версии, без изменений)
+      function refreshItemList() {
+        if (!E.itemList) return;
+        E.itemList.innerHTML = "";
+        Object.entries(items).forEach(([id, item]) => {
+          if (!item) return;
+          const row = document.createElement("div");
+          row.className = "item-row";
 
-      refreshItemList(); // предполагаем, что функция определена выше
+          let previewHtml = '';
+          const previewUrl = item.type === 'meme' ? (item.memeVideo || item.memeImage || item.url) : item.url;
+          if (item.type === 'image' || item.type === 'video' || item.type === 'meme') {
+            previewHtml = `<img class="item-thumb" src="${previewUrl}" onerror="this.style.display='none'">`;
+          } else if (item.type === 'text') {
+            const words = (item.text || '').split(' ').slice(0, 3).join(' ');
+            previewHtml = `<span style="width:48px; text-align:center;">${words || '…'}</span>`;
+          } else if (item.type === 'audio' || item.type === 'tts') {
+            previewHtml = `<span style="width:48px; text-align:center;">🎵</span>`;
+          } else {
+            previewHtml = `<span style="width:48px; text-align:center;">📺</span>`;
+          }
+
+          row.innerHTML = `
+            ${previewHtml}
+            <div><strong>${item.title||id}</strong><br/><small>${item.type}${item.hotkey ? ' ['+item.hotkey+']' : ''}</small></div>
+            <div style="display:flex; gap:6px;">
+              <button class="edit-item">Ред.</button>
+              <button class="delete-item danger">Удал.</button>
+            </div>`;
+
+          row.querySelector('.edit-item').onclick = () => selectItem(id);
+          row.querySelector('.delete-item').onclick = async () => {
+            if (item && item.supabasePath) await deleteFileFromSupabase(item.supabasePath);
+            await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
+            if (selectedItemId === id) closeEditor();
+          };
+          E.itemList.appendChild(row);
+        });
+      }
+
+      function overlayPointerDown(e) {
+        const el = e.currentTarget;
+        const id = el.dataset.id;
+        if (!id) return;
+        e.preventDefault();
+        const stageRect = E.stageElement.getBoundingClientRect();
+        const scaleX = STAGE_WIDTH / stageRect.width;
+        const scaleY = STAGE_HEIGHT / stageRect.height;
+        dragState = {
+          id, startX: e.clientX, startY: e.clientY,
+          origLeft: parseFloat(el.style.left) * STAGE_WIDTH / 100,
+          origTop: parseFloat(el.style.top) * STAGE_HEIGHT / 100,
+          el, scaleX, scaleY
+        };
+        el.classList.add('dragging');
+        window.addEventListener('pointermove', overlayPointerMove);
+        window.addEventListener('pointerup', overlayPointerUp, { once: true });
+      }
+      function overlayPointerMove(e) {
+        if (!dragState) return;
+        const dx = (e.clientX - dragState.startX) * dragState.scaleX;
+        const dy = (e.clientY - dragState.startY) * dragState.scaleY;
+        let newLeft = dragState.origLeft + dx;
+        let newTop = dragState.origTop + dy;
+        newLeft = Math.max(0, Math.min(STAGE_WIDTH, newLeft));
+        newTop = Math.max(0, Math.min(STAGE_HEIGHT, newTop));
+        dragState.el.style.left = (newLeft / STAGE_WIDTH * 100) + '%';
+        dragState.el.style.top = (newTop / STAGE_HEIGHT * 100) + '%';
+      }
+      function overlayPointerUp() {
+        if (!dragState) return;
+        const left = parseFloat(dragState.el.style.left) * STAGE_WIDTH / 100;
+        const top = parseFloat(dragState.el.style.top) * STAGE_HEIGHT / 100;
+        update(ref(db, `overlay/rooms/${activeRoomId}/items/${dragState.id}/position`), { left, top });
+        dragState = null;
+        window.removeEventListener('pointermove', overlayPointerMove);
+      }
 
       function showMode(m) {
         if (!E.overlayContainer || !E.controlPanel || !E.modePicker) return;
