@@ -247,7 +247,6 @@
               <button type="button" id="manage-voices-btn" style="width: auto; padding: 6px 10px; font-size: 13px;">Управление</button>
             </div>
           </label>
-          <!-- Мем поля -->
           <label id="label-new-meme-video" class="hidden">URL видео (mp4) <input type="text" id="new-meme-video" placeholder="https://..." /></label>
           <label id="label-new-meme-image" class="hidden">URL картинки (если нет видео) <input type="text" id="new-meme-image" placeholder="https://..." /></label>
           <label id="label-new-meme-audio" class="hidden">URL звука (.mp3) <input type="text" id="new-meme-audio" placeholder="https://..." /></label>
@@ -264,7 +263,6 @@
           <div id="item-list"></div>
         </section>
       </div>
-      <!-- Модальное окно голосов -->
       <div id="voices-modal" class="hidden" style="display: none;">
         <div class="modal-content">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -315,7 +313,6 @@
                 <label>OBS 🔈</label>
                 <audio id="audio-obs" controls></audio>
               </div>
-              <!-- Хромакей -->
               <div id="chroma-settings" class="hidden" style="margin-top:8px;">
                 <label class="switch-label">
                   Хромакей
@@ -329,7 +326,6 @@
               </div>
               <div id="media-preview-container" style="margin-bottom:8px;"></div>
             </div>
-            <!-- Meme settings -->
             <div id="meme-settings" class="hidden">
               <label>URL видео <input type="text" id="selected-meme-video" /></label>
               <label>URL картинки <input type="text" id="selected-meme-image" /></label>
@@ -366,7 +362,7 @@
     </div>
   </div>
   <div id="dnd-notification"></div>
-  <script type="module">
+    <script type="module">
     (async () => {
       if (document.readyState === 'loading') await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
 
@@ -402,21 +398,31 @@
       const on = (el, event, handler) => el?.addEventListener(event, handler);
       const off = (el, event, handler) => el?.removeEventListener(event, handler);
 
-      // SVG‑фильтр для хромакея
+      // ========== НОВЫЙ ФИЛЬТР ХРОМАКЕЯ (удаляет выбранный цвет, делая его прозрачным) ==========
       function createChromaFilter(colorHex, id) {
-        const exists = document.getElementById('chroma-filter-' + id);
-        if (exists) exists.remove();
+        const existing = document.getElementById('chroma-filter-' + id);
+        if (existing) existing.remove();
         const r = parseInt(colorHex.slice(1,3), 16) / 255;
         const g = parseInt(colorHex.slice(3,5), 16) / 255;
         const b = parseInt(colorHex.slice(5,7), 16) / 255;
         const svg = `
-          <filter id="chroma-filter-${id}" x="0" y="0" width="100%" height="100%">
+          <filter id="chroma-filter-${id}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
             <feColorMatrix type="matrix" values="
               1 0 0 0 ${-r}
               0 1 0 0 ${-g}
               0 0 1 0 ${-b}
               0 0 0 1 0
-            " />
+            " in="SourceGraphic" result="diff" />
+            <feColorMatrix type="matrix" values="
+              0.2126 0.7152 0.0722 0 0
+              0.2126 0.7152 0.0722 0 0
+              0.2126 0.7152 0.0722 0 0
+              0      0      0      1 0
+            " in="diff" result="gray" />
+            <feComponentTransfer in="gray" result="mask">
+              <feFuncA type="linear" slope="10" intercept="-0.5" />
+            </feComponentTransfer>
+            <feComposite operator="in" in="SourceGraphic" in2="mask" />
           </filter>`;
         const defs = document.querySelector('defs#chroma-defs') || (() => {
           const d = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
@@ -516,7 +522,6 @@
         memeChromaSwatch: $("meme-chroma-swatch"),
       };
 
-      // Связываем цветовой индикатор с полем цвета
       function bindColorSwatch(swatch, input) {
         if (!swatch || !input) return;
         const update = () => { swatch.style.background = input.value; };
@@ -588,16 +593,10 @@
       onValue(ref(db, "overlay/status/heartbeat"), (snap) => {
         const ts = snap.val();
         const online = ts && (Date.now() - ts < 4000);
-        if (E.overlayStatusDot) {
-          E.overlayStatusDot.style.background = online ? '#4caf50' : '#f44336';
-        }
-        if (E.overlayStatusText) {
-          E.overlayStatusText.textContent = online ? 'Оверлей подключён' : 'Оверлей не подключён';
-        }
+        if (E.overlayStatusDot) E.overlayStatusDot.style.background = online ? '#4caf50' : '#f44336';
+        if (E.overlayStatusText) E.overlayStatusText.textContent = online ? 'Оверлей подключён' : 'Оверлей не подключён';
       });
-      if (mode === 'overlay') {
-        setInterval(() => { set(ref(db, "overlay/status/heartbeat"), Date.now()); }, 2000);
-      }
+      if (mode === 'overlay') setInterval(() => set(ref(db, "overlay/status/heartbeat"), Date.now()), 2000);
 
       // ============ ГОЛОСА ============
       function extractVoiceFromUrl(rawUrl) {
@@ -610,15 +609,14 @@
           return { name: 'Голос ' + id.substring(0, 8), modelId: id };
         } catch (e) { return { name: '', modelId: '' }; }
       }
-
       on(E.extractVoiceLinkBtn, 'click', () => {
         const raw = E.voiceLinkInput?.value?.trim();
         if (!raw) return;
         const { name, modelId } = extractVoiceFromUrl(raw);
-        if (!modelId) { showNotification('❌ Не удалось извлечь modelId из ссылки'); return; }
+        if (!modelId) { showNotification('❌ Не удалось извлечь modelId'); return; }
         if (E.newVoiceName) E.newVoiceName.value = name;
         if (E.newVoiceModelId) E.newVoiceModelId.value = modelId;
-        showNotification('✅ Голос извлечён, можно изменить название и добавить');
+        showNotification('✅ Голос извлечён');
       });
 
       function loadVoices() {
@@ -640,9 +638,8 @@
             Object.entries(voices).forEach(([id, v]) => {
               const div = document.createElement('div');
               div.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;';
-              div.innerHTML = `<span>${v.name} (${v.modelId})</span>
-                <button class="delete-voice danger" data-id="${id}" style="width:auto; padding:4px 8px; font-size:12px;">Удалить</button>`;
-              div.querySelector('.delete-voice').onclick = (e) => { e.stopPropagation(); remove(ref(db, `overlay/voices/${id}`)); };
+              div.innerHTML = `<span>${v.name} (${v.modelId})</span><button class="delete-voice danger" data-id="${id}" style="width:auto; padding:4px 8px;">Удалить</button>`;
+              div.querySelector('.delete-voice').onclick = () => remove(ref(db, `overlay/voices/${id}`));
               E.voicesList.appendChild(div);
             });
           }
@@ -650,18 +647,12 @@
       }
       loadVoices();
 
-      on(E.manageVoicesBtn, 'click', () => {
-        E.voicesModal.style.display = 'flex';
-        E.voicesModal.classList.remove('hidden');
-      });
-      on(E.closeVoicesModal, 'click', () => {
-        E.voicesModal.style.display = 'none';
-        E.voicesModal.classList.add('hidden');
-      });
+      on(E.manageVoicesBtn, 'click', () => { E.voicesModal.style.display = 'flex'; E.voicesModal.classList.remove('hidden'); });
+      on(E.closeVoicesModal, 'click', () => { E.voicesModal.style.display = 'none'; E.voicesModal.classList.add('hidden'); });
       on(E.addVoiceBtn, 'click', async () => {
         const name = E.newVoiceName.value.trim();
         const modelId = E.newVoiceModelId.value.trim();
-        if (!name || !modelId) { showNotification('❌ Заполни название и modelId'); return; }
+        if (!name || !modelId) { showNotification('❌ Заполни поля'); return; }
         await push(voicesRef, { name, modelId });
         E.newVoiceName.value = ''; E.newVoiceModelId.value = ''; E.voiceLinkInput.value = '';
         showNotification('✅ Голос добавлен');
@@ -670,23 +661,16 @@
       // ============ MEME HOTKEYS ============
       const memeHotkeyMap = {};
       function updateMemeHotkeyMap() {
-        for (const key of Object.keys(memeHotkeyMap)) delete memeHotkeyMap[key];
-        Object.entries(items).forEach(([id, item]) => {
-          if (item?.type === 'meme' && item.hotkey) memeHotkeyMap[item.hotkey.toUpperCase()] = id;
-        });
+        for (const k of Object.keys(memeHotkeyMap)) delete memeHotkeyMap[k];
+        Object.entries(items).forEach(([id, item]) => { if (item?.type === 'meme' && item.hotkey) memeHotkeyMap[item.hotkey.toUpperCase()] = id; });
       }
       document.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
         const key = e.key.toUpperCase();
-        if (memeHotkeyMap[key] && e.key.length === 1) {
-          e.preventDefault();
-          triggerMeme(memeHotkeyMap[key]);
-        }
+        if (memeHotkeyMap[key] && e.key.length === 1) { e.preventDefault(); triggerMeme(memeHotkeyMap[key]); }
       });
-
       function triggerMeme(id) {
-        const item = items[id];
-        if (!item || item.type !== 'meme') return;
+        if (!items[id] || items[id].type !== 'meme') return;
         update(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`), { visible: true, playing: true });
       }
       function handleMemeEnded(id) {
@@ -705,7 +689,6 @@
         if (/\.(mp3|wav|ogg|flac|aac)$/.test(name)) return 'audio';
         return null;
       }
-
       async function uploadFileToSupabase(file, retries = 3) {
         const filePath = `overlay-uploads/${Date.now()}-${file.name}`;
         for (let i = 0; i < retries; i++) {
@@ -717,13 +700,11 @@
           } catch (e) { if (i === retries - 1) throw e; await new Promise(r => setTimeout(r, 2000)); }
         }
       }
-
       async function deleteFileFromSupabase(path) {
         if (!path) return;
         const { error } = await supabase.storage.from(BUCKET_NAME).remove([path]);
         if (error) console.warn('Ошибка удаления из Supabase:', error);
       }
-
       function createDefaultItem(type, payload = {}) {
         urlCounter++;
         let title = payload.title || '';
@@ -752,7 +733,6 @@
           ...payload
         };
       }
-
       function showNotification(msg, dur = 3000) {
         if (!E.dndNotification) return;
         E.dndNotification.textContent = msg;
@@ -776,13 +756,13 @@
           if (files && files.length > 0) {
             for (const file of files) {
               const fileType = getFileType(file);
-              if (!fileType) { showNotification('❌ Неподдерживаемый тип файла: ' + file.name); continue; }
+              if (!fileType) { showNotification('❌ Неподдерживаемый тип: ' + file.name); continue; }
               try {
                 const { url } = await uploadFileToSupabase(file);
                 if (fileType === 'video') memeVideo = url;
                 else if (fileType === 'image') memeImage = url;
                 else if (fileType === 'audio') memeAudio = url;
-              } catch (e) { showNotification('❌ Ошибка загрузки ' + file.name + ': ' + e.message); return; }
+              } catch (e) { showNotification('❌ Ошибка загрузки: ' + e.message); return; }
             }
             E.fields.file.value = '';
           } else {
@@ -792,7 +772,7 @@
           }
           const hotkey = E.fields.memeHotkey?.value?.trim().toUpperCase() || '';
           if (!memeVideo && !memeImage) { showNotification('❌ Укажи видео или картинку'); return; }
-          if (!memeVideo && !memeAudio) { showNotification('❌ Добавь звук, если это картинка'); return; }
+          if (!memeVideo && !memeAudio) { showNotification('❌ Добавь звук'); return; }
           if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
           const item = createDefaultItem('meme', {
             memeVideo: memeVideo || null, memeImage: memeImage || null, memeAudio: memeAudio || null,
@@ -828,7 +808,7 @@
         }
         if (file) {
           const fileType = getFileType(file);
-          if (!fileType) { showNotification('❌ Неподдерживаемый тип файла'); return; }
+          if (!fileType) { showNotification('❌ Неподдерживаемый тип'); return; }
           try {
             const { url, path } = await uploadFileToSupabase(file);
             if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
@@ -848,58 +828,7 @@
         }
         if (!url && !file) showNotification('Введите URL или выберите файл');
       }
-
-      // ============ TTS ============
-      async function requestTTS() {
-        try {
-          const text = E.fields.text?.value?.trim() || '';
-          if (!text) { showNotification('❌ Введите текст для озвучки'); return; }
-          const voice = E.fields.voice?.value || '';
-          const url = `${SUPABASE_FUNCTION_URL}?text=${encodeURIComponent(text)}&voice=${encodeURIComponent(voice)}`;
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`Ошибка TTS: ${res.status}`);
-          const data = await res.json();
-          if (data && data.url) { handleTTSVoiceUrl(data.url); }
-          else if (data && data.error) { showNotification('❌ TTS: ' + data.error); }
-          else { showNotification('❌ Неожиданный ответ от TTS'); }
-        } catch (e) { showNotification('❌ Не удалось получить TTS: ' + e.message); }
-      }
-
-      async function handleTTSVoiceUrl(url) {
-        if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
-        const allItems = items || {};
-        for (const [id, item] of Object.entries(allItems)) {
-          if (item?.type === 'tts') {
-            if (item.storagePath) { try { await supabase.storage.from(BUCKET_NAME).remove([item.storagePath]); } catch (e) {} }
-            await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
-          }
-        }
-        const urlObj = new URL(url);
-        const pathParts = urlObj.pathname.split('/');
-        const bucketIndex = pathParts.indexOf('overlay');
-        const storagePath = bucketIndex >= 0 ? pathParts.slice(bucketIndex + 1).join('/') : null;
-        const item = createDefaultItem('tts', { url, fileName: 'TTS' });
-        item.playing = true; item.visible = false;
-        if (storagePath) item.storagePath = storagePath;
-        await push(itemsRef, item);
-        showNotification('✅ TTS добавлен в оверлей');
-      }
-
-      function handleNewTypeChange() {
-        if (!E.fields.type) return;
-        const type = E.fields.type.value;
-        E.labelNewUrl.classList.toggle('hidden', !['image','video','audio','youtube'].includes(type));
-        E.labelNewText.classList.toggle('hidden', !['text','tts'].includes(type));
-        if (E.labelNewVoice) E.labelNewVoice.classList.toggle('hidden', type !== 'tts');
-        const isMeme = type === 'meme';
-        if (E.labelNewMemeVideo) E.labelNewMemeVideo.classList.toggle('hidden', !isMeme);
-        if (E.labelNewMemeImage) E.labelNewMemeImage.classList.toggle('hidden', !isMeme);
-        if (E.labelNewMemeAudio) E.labelNewMemeAudio.classList.toggle('hidden', !isMeme);
-        if (E.labelNewMemeHotkey) E.labelNewMemeHotkey.classList.toggle('hidden', !isMeme);
-      }
-      on(E.fields.type, 'change', handleNewTypeChange);
-
-      // ============ ГОРЯЧИЕ КЛАВИШИ J+C, O+C ============
+            // ============ ГОРЯЧИЕ КЛАВИШИ J+C, O+C ============
       let jPressed = false, cPressed = false, oPressed = false;
       document.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
@@ -940,6 +869,7 @@
       }
       window.addEventListener('resize', scaleCanvas);
 
+      // ============ КОМНАТЫ ============
       async function initRooms() {
         const protectedSnap = await get(ref(db, `overlay/rooms/${PROTECTED_ROOM_ID}`));
         if (!protectedSnap.exists()) await set(ref(db, `overlay/rooms/${PROTECTED_ROOM_ID}`), { name: "Основная", createdAt: Date.now() });
@@ -1040,6 +970,56 @@
         try { await navigator.clipboard.writeText(E.overlayLink.value); showNotification('✅ Ссылка скопирована'); }
         catch(e) { alert('Скопируйте вручную: ' + E.overlayLink.value); }
       });
+
+      // ============ TTS ============
+      async function requestTTS() {
+        try {
+          const text = E.fields.text?.value?.trim() || '';
+          if (!text) { showNotification('❌ Введите текст для озвучки'); return; }
+          const voice = E.fields.voice?.value || '';
+          const url = `${SUPABASE_FUNCTION_URL}?text=${encodeURIComponent(text)}&voice=${encodeURIComponent(voice)}`;
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`Ошибка TTS: ${res.status}`);
+          const data = await res.json();
+          if (data && data.url) { handleTTSVoiceUrl(data.url); }
+          else if (data && data.error) { showNotification('❌ TTS: ' + data.error); }
+          else { showNotification('❌ Неожиданный ответ от TTS'); }
+        } catch (e) { showNotification('❌ Не удалось получить TTS: ' + e.message); }
+      }
+
+      async function handleTTSVoiceUrl(url) {
+        if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
+        const allItems = items || {};
+        for (const [id, item] of Object.entries(allItems)) {
+          if (item?.type === 'tts') {
+            if (item.storagePath) { try { await supabase.storage.from(BUCKET_NAME).remove([item.storagePath]); } catch (e) {} }
+            await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
+          }
+        }
+        const urlObj = new URL(url);
+        const pathParts = urlObj.pathname.split('/');
+        const bucketIndex = pathParts.indexOf('overlay');
+        const storagePath = bucketIndex >= 0 ? pathParts.slice(bucketIndex + 1).join('/') : null;
+        const item = createDefaultItem('tts', { url, fileName: 'TTS' });
+        item.playing = true; item.visible = false;
+        if (storagePath) item.storagePath = storagePath;
+        await push(itemsRef, item);
+        showNotification('✅ TTS добавлен в оверлей');
+      }
+
+      function handleNewTypeChange() {
+        if (!E.fields.type) return;
+        const type = E.fields.type.value;
+        E.labelNewUrl.classList.toggle('hidden', !['image','video','audio','youtube'].includes(type));
+        E.labelNewText.classList.toggle('hidden', !['text','tts'].includes(type));
+        if (E.labelNewVoice) E.labelNewVoice.classList.toggle('hidden', type !== 'tts');
+        const isMeme = type === 'meme';
+        if (E.labelNewMemeVideo) E.labelNewMemeVideo.classList.toggle('hidden', !isMeme);
+        if (E.labelNewMemeImage) E.labelNewMemeImage.classList.toggle('hidden', !isMeme);
+        if (E.labelNewMemeAudio) E.labelNewMemeAudio.classList.toggle('hidden', !isMeme);
+        if (E.labelNewMemeHotkey) E.labelNewMemeHotkey.classList.toggle('hidden', !isMeme);
+      }
+      on(E.fields.type, 'change', handleNewTypeChange);
 
       // ================== ХОЛСТ ==================
       function updateSelectionHandles() {
@@ -1702,6 +1682,7 @@
       });
       on(E.logoutButton, 'click', () => { E.secretPrompt.classList.remove('hidden'); E.controlInterface.classList.add('hidden'); });
       on(E.addItemButton, 'click', handleAddItem);
+
       showMode(mode);
       window.addEventListener('resize', scaleCanvas);
       scaleCanvas();
