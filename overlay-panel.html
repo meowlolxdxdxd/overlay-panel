@@ -1040,7 +1040,7 @@
         const el = document.createElement('div');
         el.className = 'canvas-item';
         el.dataset.id = id;
-        el.style.display = item.visible !== false ? 'flex' : 'none';
+        el.style.display = 'flex'; // всегда показываем на холсте, прозрачность через CSS
         const left = (item.position?.left || 0) + OFFSET_X;
         const top = (item.position?.top || 0) + OFFSET_Y;
         el.style.left = left + 'px';
@@ -1176,7 +1176,7 @@
             el.style.width = (item.size?.width || 320) + 'px';
             el.style.height = (item.size?.height || 240) + 'px';
             el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
-            el.style.display = item.visible !== false ? 'flex' : 'none';
+            el.style.display = 'flex'; // всегда показываем на холсте
             el.classList.toggle('invisible', !item.visible);
             const inner = el.querySelector('img, video, iframe, .overlay-text');
             if (inner) {
