@@ -215,7 +215,7 @@
           <label id="label-new-meme-hotkey" class="hidden">Клавиша (буква/цифра) <input type="text" id="new-meme-hotkey" placeholder="A" maxlength="1" style="text-transform:uppercase;" /></label>
           <label>Файл для загрузки</label>
           <div class="file-upload-wrapper">
-            <div class="file-upload-trigger"><span>📁 Выбрать файл</span><input type="file" id="new-item-file" accept="image/*,video/*,audio/*" /></div>
+            <div class="file-upload-trigger"><span>📁 Выбрать файл</span><input type="file" id="new-item-file" accept="image/*,video/*,audio/*" multiple /></div>
           </div>
           <button type="button" id="add-item-button">Добавить элемент</button>
           <p class="help-text" id="upload-status" style="display:none; color:#9147ff; opacity:0.9;"></p>
@@ -599,14 +599,212 @@
         });
       }
 
-      // Мем после окончания: скрыть и остановить
       function handleMemeEnded(id) {
         update(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`), {
           playing: false,
           visible: false,
         });
       }
-      // Горячие клавиши J+C и O+C
+
+      // ============ УТИЛИТЫ ============
+      function getFileType(file) {
+        const mime = file.type;
+        if (mime.startsWith('image/')) return 'image';
+        if (mime.startsWith('video/')) return 'video';
+        if (mime.startsWith('audio/')) return 'audio';
+        const name = file.name.toLowerCase();
+        if (/\.(jpg|jpeg|png|gif|webp|svg|bmp)$/.test(name)) return 'image';
+        if (/\.(mp4|webm|mov|avi|mkv)$/.test(name)) return 'video';
+        if (/\.(mp3|wav|ogg|flac|aac)$/.test(name)) return 'audio';
+        return null;
+      }
+
+      async function uploadFileToSupabase(file, retries = 3) {
+        const filePath = `overlay-uploads/${Date.now()}-${file.name}`;
+        for (let i = 0; i < retries; i++) {
+          try {
+            const { data, error } = await supabase.storage.from(BUCKET_NAME).upload(filePath, file, { cacheControl: '3600', upsert: false });
+            if (error) throw new Error(error.message);
+            const { data: urlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+            return { url: urlData.publicUrl, path: filePath };
+          } catch (e) {
+            if (i === retries - 1) throw e;
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        }
+      }
+
+      async function deleteFileFromSupabase(path) {
+        if (!path) return;
+        const { error } = await supabase.storage.from(BUCKET_NAME).remove([path]);
+        if (error) console.warn('Ошибка удаления из Supabase:', error);
+      }
+
+      function createDefaultItem(type, payload = {}) {
+        urlCounter++;
+        let title = payload.title || '';
+        if (!title) {
+          if (payload.url && !payload.file) title = `URL ${urlCounter}`;
+          else if (type === 'audio' || type === 'tts') title = payload.fileName || `Аудио ${urlCounter}`;
+          else if (type === 'text') title = payload.text ? payload.text.split(' ').slice(0, 3).join(' ') + '…' : 'Текст';
+          else if (type === 'meme') title = 'Мем ' + urlCounter;
+          else title = type.charAt(0).toUpperCase() + type.slice(1);
+        }
+        return {
+          type,
+          title,
+          visible: type !== 'audio' && type !== 'tts' && type !== 'meme',
+          position: { ...NEW_ITEM_POSITION },
+          size: { width: (type === 'audio' || type === 'tts') ? 300 : 400, height: (type === 'audio' || type === 'tts') ? 60 : 240 },
+          rotation: 0,
+          volume: 1,
+          playing: false,
+          style: { fontSize: 36, bold: false, italic: false, strike: false, color: "#ffffff" },
+          media: { playbackRate: 1, currentTime: 0 },
+          fileName: payload.fileName || null,
+          hotkey: payload.hotkey || null,
+          memeVideo: payload.memeVideo || null,
+          memeImage: payload.memeImage || null,
+          memeAudio: payload.memeAudio || null,
+          ...payload
+        };
+      }
+
+      function showNotification(msg, dur = 3000) {
+        if (!E.dndNotification) return;
+        E.dndNotification.textContent = msg;
+        E.dndNotification.classList.add("show");
+        clearTimeout(E.dndNotification._timeout);
+        E.dndNotification._timeout = setTimeout(() => E.dndNotification.classList.remove("show"), dur);
+      }
+
+      async function handleAddItem() {
+        if (!E.fields.type) return;
+        const type = E.fields.type.value;
+        const url = E.fields.url?.value.trim() || '';
+        const text = E.fields.text?.value.trim() || '';
+        const file = E.fields.file?.files[0] || null;
+
+        if (type === 'tts') {
+          await requestTTS();
+          return;
+        }
+
+        if (type === 'meme') {
+          // --- ЗАГРУЗКА ФАЙЛОВ МЕМА С ПК ---
+          const files = E.fields.file?.files;
+          let memeVideo = '';
+          let memeImage = '';
+          let memeAudio = '';
+
+          if (files && files.length > 0) {
+            for (const file of files) {
+              const fileType = getFileType(file);
+              if (!fileType) {
+                showNotification('❌ Неподдерживаемый тип файла: ' + file.name);
+                continue;
+              }
+              try {
+                const { url } = await uploadFileToSupabase(file);
+                if (fileType === 'video') memeVideo = url;
+                else if (fileType === 'image') memeImage = url;
+                else if (fileType === 'audio') memeAudio = url;
+              } catch (e) {
+                showNotification('❌ Ошибка загрузки ' + file.name + ': ' + e.message);
+                return;
+              }
+            }
+            E.fields.file.value = ''; // очищаем поле
+          } else {
+            // fallback на URL
+            memeVideo = E.fields.memeVideo?.value?.trim() || '';
+            memeImage = E.fields.memeImage?.value?.trim() || '';
+            memeAudio = E.fields.memeAudio?.value?.trim() || '';
+          }
+
+          const hotkey = E.fields.memeHotkey?.value?.trim().toUpperCase() || '';
+
+          if (!memeVideo && !memeImage) {
+            showNotification('❌ Укажи видео или картинку');
+            return;
+          }
+          if (!memeVideo && !memeAudio) {
+            showNotification('❌ Добавь звук, если это картинка');
+            return;
+          }
+          if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
+
+          const item = createDefaultItem('meme', {
+            memeVideo: memeVideo || null,
+            memeImage: memeImage || null,
+            memeAudio: memeAudio || null,
+            hotkey: hotkey || null,
+            title: 'Мем' + (hotkey ? ' [' + hotkey + ']' : ''),
+          });
+          item.visible = false;
+          item.playing = false;
+          await push(itemsRef, item);
+          // Очистка текстовых полей
+          if (E.fields.memeVideo) E.fields.memeVideo.value = '';
+          if (E.fields.memeImage) E.fields.memeImage.value = '';
+          if (E.fields.memeAudio) E.fields.memeAudio.value = '';
+          if (E.fields.memeHotkey) E.fields.memeHotkey.value = '';
+          showNotification('✅ Мем добавлен');
+          return;
+        }
+
+        if (type === "text") {
+          if (!text) { alert("Введите текст"); return; }
+          if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
+          const item = createDefaultItem("text", { text });
+          item.visible = true;
+          await push(itemsRef, item);
+          if (E.fields.text) E.fields.text.value = "";
+          return;
+        }
+        if (type === "youtube") {
+          if (!url) { alert("Вставьте ссылку"); return; }
+          const match = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+          const videoId = match ? match[1] : null;
+          if (!videoId) { alert("Некорректная ссылка"); return; }
+          if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
+          const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=0&controls=0&rel=0&modestbranding=1&showinfo=0&enablejsapi=1`;
+          const item = createDefaultItem("youtube", { url: embedUrl, videoId });
+          item.visible = true;
+          await push(itemsRef, item);
+          if (E.fields.url) E.fields.url.value = "";
+          return;
+        }
+        if (file) {
+          // обычная загрузка одиночного файла (image/video/audio)
+          const fileType = getFileType(file);
+          if (!fileType) { showNotification('❌ Неподдерживаемый тип файла'); return; }
+          try {
+            const { url, path } = await uploadFileToSupabase(file);
+            if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
+            const item = createDefaultItem(fileType, { url, fileName: file.name, file: true });
+            item.supabasePath = path;
+            item.visible = fileType !== 'audio';
+            await push(itemsRef, item);
+            E.fields.file.value = '';
+            showNotification('✅ Файл добавлен');
+          } catch (e) {
+            showNotification('❌ Ошибка загрузки: ' + e.message);
+          }
+          return;
+        }
+        if (url && type !== "text" && type !== "youtube") {
+          if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
+          const item = createDefaultItem(type, { url, fileName: null });
+          item.visible = type !== 'audio';
+          await push(itemsRef, item);
+          if (E.fields.url) E.fields.url.value = "";
+          showNotification('✅ Элемент добавлен');
+          return;
+        }
+        if (!url && !file) showNotification('Введите URL или выберите файл');
+      }
+            // Горячие клавиши J+C и O+C
       let jPressed = false, cPressed = false, oPressed = false;
       document.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
@@ -648,14 +846,6 @@
         E.canvas.style.setProperty('--canvas-scale', currentScale);
       }
       window.addEventListener('resize', scaleCanvas);
-
-      function showNotification(msg, dur = 3000) {
-        if (!E.dndNotification) return;
-        E.dndNotification.textContent = msg;
-        E.dndNotification.classList.add("show");
-        clearTimeout(E.dndNotification._timeout);
-        E.dndNotification._timeout = setTimeout(() => E.dndNotification.classList.remove("show"), dur);
-      }
 
       async function initRooms() {
         const protectedSnap = await get(ref(db, `overlay/rooms/${PROTECTED_ROOM_ID}`));
@@ -758,101 +948,7 @@
         catch(e) { alert('Скопируйте вручную: ' + E.overlayLink.value); }
       });
 
-      function getFileType(file) {
-        const mime = file.type;
-        if (mime.startsWith('image/')) return 'image';
-        if (mime.startsWith('video/')) return 'video';
-        if (mime.startsWith('audio/')) return 'audio';
-        const name = file.name.toLowerCase();
-        if (/\.(jpg|jpeg|png|gif|webp|svg|bmp)$/.test(name)) return 'image';
-        if (/\.(mp4|webm|mov|avi|mkv)$/.test(name)) return 'video';
-        if (/\.(mp3|wav|ogg|flac|aac)$/.test(name)) return 'audio';
-        return null;
-      }
-
-      function createDefaultItem(type, payload = {}) {
-        urlCounter++;
-        let title = payload.title || '';
-        if (!title) {
-          if (payload.url && !payload.file) title = `URL ${urlCounter}`;
-          else if (type === 'audio' || type === 'tts') title = payload.fileName || `Аудио ${urlCounter}`;
-          else if (type === 'text') title = payload.text ? payload.text.split(' ').slice(0, 3).join(' ') + '…' : 'Текст';
-          else if (type === 'meme') title = 'Мем ' + urlCounter;
-          else title = type.charAt(0).toUpperCase() + type.slice(1);
-        }
-        return {
-          type,
-          title,
-          visible: type !== 'audio' && type !== 'tts' && type !== 'meme',
-          position: { ...NEW_ITEM_POSITION },
-          size: { width: (type === 'audio' || type === 'tts') ? 300 : 400, height: (type === 'audio' || type === 'tts') ? 60 : 240 },
-          rotation: 0,
-          volume: 1,
-          playing: false,
-          style: { fontSize: 36, bold: false, italic: false, strike: false, color: "#ffffff" },
-          media: { playbackRate: 1, currentTime: 0 },
-          fileName: payload.fileName || null,
-          hotkey: payload.hotkey || null,
-          memeVideo: payload.memeVideo || null,
-          memeImage: payload.memeImage || null,
-          memeAudio: payload.memeAudio || null,
-          ...payload
-        };
-      }
-
-      async function uploadFileToSupabase(file, retries = 3) {
-        const filePath = `overlay-uploads/${Date.now()}-${file.name}`;
-        for (let i = 0; i < retries; i++) {
-          try {
-            const { data, error } = await supabase.storage.from(BUCKET_NAME).upload(filePath, file, { cacheControl: '3600', upsert: false });
-            if (error) throw new Error(error.message);
-            const { data: urlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
-            return { url: urlData.publicUrl, path: filePath };
-          } catch (e) {
-            if (i === retries - 1) throw e;
-            await new Promise(r => setTimeout(r, 2000));
-          }
-        }
-      }
-
-      async function deleteFileFromSupabase(path) {
-        if (!path) return;
-        const { error } = await supabase.storage.from(BUCKET_NAME).remove([path]);
-        if (error) console.warn('Ошибка удаления из Supabase:', error);
-      }
-
-      async function uploadFileAndCreateItem(file, type, position = null) {
-        if (!itemsRef) throw new Error('Комната не выбрана');
-        const { url, path } = await uploadFileToSupabase(file);
-        const item = createDefaultItem(type, { url, fileName: file.name, file: true });
-        item.supabasePath = path;
-        if (position) item.position = position;
-        const newRef = await push(itemsRef, item);
-        return newRef.key;
-      }
-
-      async function handleFileSelected(file) {
-        if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
-        const type = getFileType(file);
-        if (!type) { showNotification('❌ Неподдерживаемый тип файла'); return; }
-        if (E.uploadStatusEl) { E.uploadStatusEl.style.display = 'block'; E.uploadStatusEl.textContent = `⏳ Загружаю ${file.name}...`; }
-        try {
-          await uploadFileAndCreateItem(file, type);
-          if (E.uploadStatusEl) E.uploadStatusEl.style.display = 'none';
-          showNotification('✅ Файл добавлен (вне кадра)');
-        } catch(e) {
-          if (E.uploadStatusEl) E.uploadStatusEl.style.display = 'none';
-          console.error('Ошибка загрузки файла:', e);
-          showNotification('❌ Ошибка загрузки: ' + e.message);
-        }
-      }
-
-      on(E.fields.file, 'change', () => {
-        const files = E.fields.file.files;
-        if (files && files.length) { for (const file of files) handleFileSelected(file); E.fields.file.value = ''; }
-      });
-
-      // ============ TTS через Fish Audio / Google ============
+      // ============ TTS ============
       async function requestTTS() {
         try {
           const text = E.fields.text?.value?.trim() || '';
@@ -882,8 +978,6 @@
           showNotification('❌ Сначала выберите комнату');
           return;
         }
-
-        // Удаляем предыдущие TTS
         const allItems = items || {};
         for (const [id, item] of Object.entries(allItems)) {
           if (item?.type === 'tts') {
@@ -893,7 +987,6 @@
             await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
           }
         }
-
         const urlObj = new URL(url);
         const pathParts = urlObj.pathname.split('/');
         const bucketIndex = pathParts.indexOf('overlay');
@@ -913,7 +1006,6 @@
         E.labelNewUrl.classList.toggle('hidden', !['image','video','audio','youtube'].includes(type));
         E.labelNewText.classList.toggle('hidden', !['text','tts'].includes(type));
         if (E.labelNewVoice) E.labelNewVoice.classList.toggle('hidden', type !== 'tts');
-        // Показ полей мема
         const isMeme = type === 'meme';
         if (E.labelNewMemeVideo) E.labelNewMemeVideo.classList.toggle('hidden', !isMeme);
         if (E.labelNewMemeImage) E.labelNewMemeImage.classList.toggle('hidden', !isMeme);
@@ -922,90 +1014,7 @@
       }
       on(E.fields.type, 'change', handleNewTypeChange);
 
-      async function handleAddItem() {
-        if (!E.fields.type) return;
-        const type = E.fields.type.value;
-        const url = E.fields.url?.value.trim() || '';
-        const text = E.fields.text?.value.trim() || '';
-        const file = E.fields.file?.files[0] || null;
-
-        if (type === 'tts') {
-          await requestTTS();
-          return;
-        }
-
-        if (type === 'meme') {
-          const videoUrl = E.fields.memeVideo?.value?.trim() || '';
-          const imageUrl = E.fields.memeImage?.value?.trim() || '';
-          const audioUrl = E.fields.memeAudio?.value?.trim() || '';
-          const hotkey = E.fields.memeHotkey?.value?.trim().toUpperCase() || '';
-
-          if (!videoUrl && !imageUrl) {
-            showNotification('❌ Укажи URL видео или картинку');
-            return;
-          }
-          if (!videoUrl && !audioUrl) {
-            showNotification('❌ Добавь звук, если это картинка');
-            return;
-          }
-          if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
-
-          const item = createDefaultItem('meme', {
-            memeVideo: videoUrl || null,
-            memeImage: imageUrl || null,
-            memeAudio: audioUrl || null,
-            hotkey: hotkey || null,
-            title: 'Мем' + (hotkey ? ' [' + hotkey + ']' : ''),
-          });
-          item.visible = false;
-          item.playing = false;
-          await push(itemsRef, item);
-          // Очистка полей
-          if (E.fields.memeVideo) E.fields.memeVideo.value = '';
-          if (E.fields.memeImage) E.fields.memeImage.value = '';
-          if (E.fields.memeAudio) E.fields.memeAudio.value = '';
-          if (E.fields.memeHotkey) E.fields.memeHotkey.value = '';
-          showNotification('✅ Мем добавлен');
-          return;
-        }
-
-        if (type === "text") {
-          if (!text) { alert("Введите текст"); return; }
-          if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
-          const item = createDefaultItem("text", { text });
-          item.visible = true;
-          await push(itemsRef, item);
-          if (E.fields.text) E.fields.text.value = "";
-          return;
-        }
-        if (type === "youtube") {
-          if (!url) { alert("Вставьте ссылку"); return; }
-          const match = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
-          const videoId = match ? match[1] : null;
-          if (!videoId) { alert("Некорректная ссылка"); return; }
-          if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
-          const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=0&controls=0&rel=0&modestbranding=1&showinfo=0&enablejsapi=1`;
-          const item = createDefaultItem("youtube", { url: embedUrl, videoId });
-          item.visible = true;
-          await push(itemsRef, item);
-          if (E.fields.url) E.fields.url.value = "";
-          return;
-        }
-        if (file) return;
-        if (url && type !== "text" && type !== "youtube") {
-          if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
-          const item = createDefaultItem(type, { url, fileName: null });
-          item.visible = type !== 'audio';
-          await push(itemsRef, item);
-          if (E.fields.url) E.fields.url.value = "";
-          showNotification('✅ Элемент добавлен');
-          return;
-        }
-        if (!url && !file) showNotification('Введите URL или выберите файл');
-      }
-
       // ================== РЕДАКТОР, ОВЕРЛЕЙ ==================
-
       function updateSelectionHandles() {
         document.querySelectorAll('.canvas-item .resize-handle, .canvas-item .rotate-handle').forEach(h => h.remove());
         document.querySelectorAll('.canvas-item.selected').forEach(el => el.classList.remove('selected'));
@@ -1040,11 +1049,8 @@
         el.style.height = (item.size?.height || 240) + 'px';
         el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
 
-        if (!item.visible) {
-          el.classList.add('invisible');
-        } else {
-          el.classList.remove('invisible');
-        }
+        if (!item.visible) el.classList.add('invisible');
+        else el.classList.remove('invisible');
 
         let inner;
         if (item.type === 'image') {
@@ -1084,17 +1090,12 @@
           inner.style.height = '100%';
           if (item.type === 'tts') {
             inner.addEventListener('ended', () => {
-              if (activeRoomId) {
-                remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
-              }
+              if (activeRoomId) remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
             });
           }
-          if (item.playing) {
-            inner.play().catch(() => {});
-          }
+          if (item.playing) inner.play().catch(() => {});
           el.appendChild(inner);
         } else if (item.type === 'meme') {
-          // Мем: видео или картинка + звук
           if (item.memeVideo) {
             inner = document.createElement('video');
             inner.src = item.memeVideo;
@@ -1104,27 +1105,16 @@
             inner.style.width = '100%';
             inner.style.height = '100%';
             inner.playsInline = true;
-
             inner.addEventListener('ended', () => handleMemeEnded(id));
-
-            if (item.playing) {
-              inner.play().catch(() => {});
-              el.style.display = 'flex';
-              el.classList.remove('invisible');
-            } else {
-              el.classList.add('invisible');
-            }
+            if (item.playing) inner.play().catch(() => {});
             el.appendChild(inner);
           } else if (item.memeImage) {
-            // Картинка
             inner = document.createElement('img');
             inner.src = item.memeImage;
             inner.style.width = '100%';
             inner.style.height = '100%';
             inner.style.objectFit = 'fill';
             el.appendChild(inner);
-
-            // Звук
             if (item.memeAudio) {
               const audioEl = document.createElement('audio');
               audioEl.src = item.memeAudio;
@@ -1134,18 +1124,9 @@
               audioEl.volume = item.volume || 1;
               audioEl.preload = 'auto';
               audioEl.style.display = 'none';
-
               audioEl.addEventListener('ended', () => handleMemeEnded(id));
-
               el.appendChild(audioEl);
-
-              if (item.playing) {
-                audioEl.play().catch(() => {});
-                el.style.display = 'flex';
-                el.classList.remove('invisible');
-              } else {
-                el.classList.add('invisible');
-              }
+              if (item.playing) audioEl.play().catch(() => {});
             }
           }
         } else if (item.type === 'youtube') {
@@ -1178,13 +1159,9 @@
         const existing = {};
         E.canvas.querySelectorAll('.canvas-item').forEach(el => { existing[el.dataset.id] = el; });
         const newIds = new Set(Object.keys(items));
-
         for (const id in existing) {
-          if (!newIds.has(id)) {
-            existing[id].remove();
-          }
+          if (!newIds.has(id)) existing[id].remove();
         }
-
         Object.entries(items).forEach(([id, item]) => {
           if (!item) return;
           let el = existing[id];
@@ -1201,52 +1178,29 @@
             el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
             el.style.display = item.visible !== false ? 'flex' : 'none';
             el.classList.toggle('invisible', !item.visible);
-
             const inner = el.querySelector('img, video, iframe, .overlay-text');
             if (inner) {
               if (item.type === 'meme') {
                 const videoEl = el.querySelector('video');
                 const audioEl = el.querySelector('audio');
                 if (videoEl) {
-                  if (videoEl.src !== (item.memeVideo || '')) {
-                    videoEl.src = item.memeVideo || '';
-                    videoEl.load();
-                  }
-                  if (item.playing && videoEl.paused) {
-                    videoEl.play().catch(() => {});
-                    el.classList.remove('invisible');
-                  } else if (!item.playing && !videoEl.paused) {
-                    videoEl.pause();
-                    el.classList.add('invisible');
-                  }
+                  if (videoEl.src !== (item.memeVideo || '')) { videoEl.src = item.memeVideo || ''; videoEl.load(); }
+                  if (item.playing && videoEl.paused) videoEl.play().catch(() => {});
+                  else if (!item.playing && !videoEl.paused) videoEl.pause();
                 } else if (audioEl) {
-                  if (audioEl.src !== (item.memeAudio || '')) {
-                    audioEl.src = item.memeAudio || '';
-                    audioEl.load();
-                  }
-                  if (item.playing && audioEl.paused) {
-                    audioEl.play().catch(() => {});
-                    el.classList.remove('invisible');
-                  } else if (!item.playing && !audioEl.paused) {
-                    audioEl.pause();
-                    el.classList.add('invisible');
-                  }
+                  if (audioEl.src !== (item.memeAudio || '')) { audioEl.src = item.memeAudio || ''; audioEl.load(); }
+                  if (item.playing && audioEl.paused) audioEl.play().catch(() => {});
+                  else if (!item.playing && !audioEl.paused) audioEl.pause();
                 }
-                // Картинка обновляется при необходимости
                 const imgEl = el.querySelector('img');
-                if (imgEl && imgEl.src !== (item.memeImage || '')) {
-                  imgEl.src = item.memeImage || '';
-                }
+                if (imgEl && imgEl.src !== (item.memeImage || '')) imgEl.src = item.memeImage || '';
               } else if (item.type === 'text' && inner.classList.contains('overlay-text')) {
                 inner.textContent = item.text;
                 inner.style.fontSize = (item.style?.fontSize||36)+'px';
                 inner.style.color = item.style?.color||'#fff';
               } else if ((item.type === 'audio' || item.type === 'tts') && inner.tagName === 'AUDIO') {
-                if (item.playing) {
-                  inner.play().catch(() => {});
-                } else {
-                  inner.pause();
-                }
+                if (item.playing) inner.play().catch(() => {});
+                else inner.pause();
               } else if (inner.tagName !== 'IFRAME' && inner.tagName !== 'DIV' && inner.src !== item.url && item.type !== 'meme') {
                 inner.src = item.url;
                 if (inner.tagName === 'AUDIO' || inner.tagName === 'VIDEO') inner.load();
@@ -1254,7 +1208,6 @@
             }
           }
         });
-
         if (currentSelected && items[currentSelected]) {
           selectedItemId = currentSelected;
           updateSelectionHandles();
@@ -1498,9 +1451,7 @@
           E.audioObs.load();
           E.audioPreview.load();
           setupObsAudioListeners(id);
-          if (item.playing) {
-            E.audioObs.play().catch(() => {});
-          }
+          if (item.playing) E.audioObs.play().catch(() => {});
         } else if (item.type === 'meme') {
           E.memeSettings.classList.remove('hidden');
           if (E.fields.selectedMemeVideo) E.fields.selectedMemeVideo.value = item.memeVideo || '';
@@ -1567,17 +1518,11 @@
           upd.hotkey = E.fields.selectedMemeHotkey?.value?.trim().toUpperCase() || null;
         }
         if (item.type === 'video' || item.type === 'audio' || item.type === 'tts') {
-          upd.media = {
-            playbackRate: Number(E.fields.selectedSpeed?.value) || 1
-          };
+          upd.media = { playbackRate: Number(E.fields.selectedSpeed?.value) || 1 };
         }
         if (item.type === 'youtube') {
-          upd.media = {
-            playbackRate: Number(E.fields.selectedSpeed?.value) || 1
-          };
-          if (youtubePlayer && youtubeReady) {
-            youtubePlayer.setVolume(upd.volume * 100);
-          }
+          upd.media = { playbackRate: Number(E.fields.selectedSpeed?.value) || 1 };
+          if (youtubePlayer && youtubeReady) youtubePlayer.setVolume(upd.volume * 100);
         }
         await update(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}`), upd);
         showNotification('✅ Изменения сохранены');
@@ -1703,9 +1648,7 @@
               inner.style.height = '100%';
               inner.playsInline = true;
               inner.addEventListener('ended', () => handleMemeEnded(id));
-              if (item.playing) {
-                inner.play().catch(() => {});
-              }
+              if (item.playing) inner.play().catch(() => {});
               el.appendChild(inner);
             } else if (item.memeImage) {
               inner = document.createElement('img');
@@ -1726,9 +1669,7 @@
                 audioEl.preload = 'auto';
                 audioEl.addEventListener('ended', () => handleMemeEnded(id));
                 el.appendChild(audioEl);
-                if (item.playing) {
-                  audioEl.play().catch(() => {});
-                }
+                if (item.playing) audioEl.play().catch(() => {});
               }
             }
           } else if (item.type === 'youtube') {
@@ -1763,9 +1704,7 @@
           row.className = "item-row";
 
           let previewHtml = '';
-          const previewUrl = item.type === 'meme'
-            ? (item.memeVideo || item.memeImage || item.url)
-            : item.url;
+          const previewUrl = item.type === 'meme' ? (item.memeVideo || item.memeImage || item.url) : item.url;
           if (item.type === 'image' || item.type === 'video' || item.type === 'meme') {
             previewHtml = `<img class="item-thumb" src="${previewUrl}" onerror="this.style.display='none'">`;
           } else if (item.type === 'text') {
@@ -1796,7 +1735,6 @@
             if (item.type === 'meme') {
               triggerMeme(id);
             } else {
-              // Для обычных видео/аудио просто переключаем playing
               update(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`), {
                 playing: !item.playing,
                 visible: true
