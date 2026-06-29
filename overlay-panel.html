@@ -102,7 +102,7 @@
 
     .canvas-item { position: absolute; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; overflow: visible; cursor: grab; user-select: none; border: 2px solid transparent; }
     .canvas-item.selected { border: 2px solid #9147ff; z-index: 10; }
-    .canvas-item img, .canvas-item video { width: 100%; height: 100%; object-fit: fill; display: block; border-radius: 6px; }
+    .canvas-item img { width: 100%; height: 100%; object-fit: fill; display: block; border-radius: 6px; }
     .canvas-item .canvas-placeholder {
       width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
       background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 24px;
@@ -1049,23 +1049,38 @@
 
         if (!item.visible) el.classList.add('invisible');
 
-        // Вместо настоящих медиа — заглушка с иконкой
-        const placeholder = document.createElement('div');
-        placeholder.className = 'canvas-placeholder';
+        // Только изображения показываем как картинки
         if (item.type === 'image' || (item.type === 'meme' && item.memeImage)) {
-          placeholder.innerHTML = '🖼️';
-        } else if (item.type === 'video' || (item.type === 'meme' && item.memeVideo)) {
-          placeholder.innerHTML = '🎬';
-        } else if (item.type === 'audio' || item.type === 'tts') {
-          placeholder.innerHTML = '🎵';
-        } else if (item.type === 'youtube') {
-          placeholder.innerHTML = '📺';
-        } else if (item.type === 'text') {
-          placeholder.innerHTML = '📝';
+          const img = document.createElement('img');
+          img.src = item.type === 'meme' ? item.memeImage : item.url;
+          img.style.width = '100%';
+          img.style.height = '100%';
+          img.style.objectFit = 'fill';
+          img.onerror = () => {
+            img.style.display = 'none';
+            const broken = document.createElement('div');
+            broken.className = 'broken-image';
+            broken.textContent = '🖼️❌';
+            el.appendChild(broken);
+          };
+          el.appendChild(img);
         } else {
-          placeholder.innerHTML = '❓';
+          // Все остальные типы – заглушка
+          const placeholder = document.createElement('div');
+          placeholder.className = 'canvas-placeholder';
+          if (item.type === 'video' || (item.type === 'meme' && item.memeVideo)) {
+            placeholder.innerHTML = '🎬';
+          } else if (item.type === 'audio' || item.type === 'tts') {
+            placeholder.innerHTML = '🎵';
+          } else if (item.type === 'youtube') {
+            placeholder.innerHTML = '📺';
+          } else if (item.type === 'text') {
+            placeholder.innerHTML = '📝';
+          } else {
+            placeholder.innerHTML = '❓';
+          }
+          el.appendChild(placeholder);
         }
-        el.appendChild(placeholder);
         el.addEventListener('pointerdown', canvasPointerDown);
         return el;
       }
@@ -1095,22 +1110,21 @@
             el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
             el.style.display = 'flex';
             el.classList.toggle('invisible', !item.visible);
-            // Обновляем иконку при смене типа (хотя тип обычно не меняется)
-            const placeholder = el.querySelector('.canvas-placeholder');
-            if (placeholder) {
-              if (item.type === 'image' || (item.type === 'meme' && item.memeImage)) {
-                placeholder.innerHTML = '🖼️';
-              } else if (item.type === 'video' || (item.type === 'meme' && item.memeVideo)) {
-                placeholder.innerHTML = '🎬';
-              } else if (item.type === 'audio' || item.type === 'tts') {
-                placeholder.innerHTML = '🎵';
-              } else if (item.type === 'youtube') {
-                placeholder.innerHTML = '📺';
-              } else if (item.type === 'text') {
-                placeholder.innerHTML = '📝';
-              } else {
-                placeholder.innerHTML = '❓';
+
+            // Если это изображение, обновляем src
+            if (item.type === 'image' || (item.type === 'meme' && item.memeImage)) {
+              const img = el.querySelector('img');
+              const expectedSrc = item.type === 'meme' ? item.memeImage : item.url;
+              if (img && img.src !== expectedSrc) {
+                img.src = expectedSrc;
+              } else if (!img) {
+                // если вдруг структура сломалась, пересоздаём (редко)
+                const newEl = buildCanvasItem(id, item);
+                el.replaceWith(newEl);
+                existing[id] = newEl;
               }
+            } else {
+              // Для заглушек ничего не делаем, они не меняются
             }
           }
         });
@@ -1622,7 +1636,6 @@
             previewHtml = `<span style="width:48px; text-align:center;">📺</span>`;
           }
 
-          // Кнопки без Play – только Ред. и Удал.
           row.innerHTML = `
             ${previewHtml}
             <div><strong>${item.title||id}</strong><br/><small>${item.type}${item.hotkey ? ' ['+item.hotkey+']' : ''}</small></div>
