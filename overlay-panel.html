@@ -219,6 +219,7 @@
           <span id="overlay-status-dot" style="width:12px; height:12px; border-radius:50%; background:red; display:inline-block;"></span>
           <span id="overlay-status-text" style="font-size:13px;">Оверлей не подключён</span>
         </div>
+        <button id="mic-button" style="width:auto; padding:6px 12px; margin-left:8px;">🎤 Микрофон</button>
         <div style="margin-left:auto; display:flex; gap:8px; align-items:center;"><input type="text" id="overlay-link" readonly style="width:260px; font-size:12px; padding:6px;" /><button id="copy-link-btn" style="width:auto; padding:6px 12px;">📋 Копировать</button></div>
       </div>
       <div class="add-panel">
@@ -339,17 +340,22 @@
                 <button id="pick-meme-chroma-color" style="width:auto; padding:6px 10px;">🎨 Пипетка</button>
               </div>
             </div>
+            <!-- Звук появления для картинок/мемов -->
+            <div id="appearance-sound-settings" class="hidden">
+              <label>URL звука появления <input type="text" id="selected-appearance-sound" /></label>
+              <label class="switch-label">
+                Звук в OBS
+                <div class="switch"><input type="checkbox" id="selected-appearance-sound-obs" /><span class="slider"></span></div>
+              </label>
+            </div>
           </div>
-          <div class="editor-right">
-            <label class="switch-label">
+          <div class="editor-right" id="editor-right-panel">
+            <!-- Будут динамически показываться только нужные элементы -->
+            <label class="switch-label" id="visibility-row">
               Видимый
               <div class="switch"><input type="checkbox" id="selected-item-visible" /><span class="slider"></span></div>
             </label>
-            <label>X <input type="number" id="selected-item-left" /></label>
-            <label>Y <input type="number" id="selected-item-top" /></label>
-            <label>Ширина <input type="number" id="selected-item-width" /></label>
-            <label>Высота <input type="number" id="selected-item-height" /></label>
-            <label>Поворот <input type="number" id="selected-item-rotation" /></label>
+            <!-- Числовые поля убраны -->
           </div>
         </div>
         <div class="editor-footer">
@@ -360,7 +366,7 @@
     </div>
   </div>
   <div id="dnd-notification"></div>
-  <script type="module">
+    <script type="module">
     (async () => {
       if (document.readyState === 'loading') await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
 
@@ -396,7 +402,7 @@
       const on = (el, event, handler) => el?.addEventListener(event, handler);
       const off = (el, event, handler) => el?.removeEventListener(event, handler);
 
-      // НОВЫЙ ФИЛЬТР ХРОМАКЕЯ (удаляет выбранный цвет)
+      // ========== ХРОМАКЕЙ (удаляет выбранный цвет) ==========
       function createChromaFilter(colorHex, id) {
         const existing = document.getElementById('chroma-filter-' + id);
         if (existing) existing.remove();
@@ -461,11 +467,6 @@
           memeAudio: $("new-meme-audio"),
           memeHotkey: $("new-meme-hotkey"),
           selectedVisible: $("selected-item-visible"),
-          selectedLeft: $("selected-item-left"),
-          selectedTop: $("selected-item-top"),
-          selectedWidth: $("selected-item-width"),
-          selectedHeight: $("selected-item-height"),
-          selectedRotation: $("selected-item-rotation"),
           selectedText: $("selected-item-text"),
           selectedFontSize: $("selected-item-font-size"),
           selectedColor: $("selected-item-color"),
@@ -480,11 +481,14 @@
           selectedChromaEnabled: $("selected-chroma-enabled"),
           selectedMemeChromaColor: $("selected-meme-chroma-color"),
           selectedMemeChromaEnabled: $("selected-meme-chroma-enabled"),
+          selectedAppearanceSound: $("selected-appearance-sound"),
+          selectedAppearanceSoundObs: $("selected-appearance-sound-obs"),
         },
         textSettings: $("text-settings"),
         mediaSettings: $("media-settings"),
         chromaSettings: $("chroma-settings"),
         memeSettings: $("meme-settings"),
+        appearanceSoundSettings: $("appearance-sound-settings"),
         saveItemButton: $("save-item-button"),
         deleteItemButton: $("delete-item-button"),
         centerItemButton: $("center-item-button"),
@@ -518,8 +522,12 @@
         pickMemeChromaColor: $("pick-meme-chroma-color"),
         chromaSwatch: $("chroma-swatch"),
         memeChromaSwatch: $("meme-chroma-swatch"),
+        micButton: $("mic-button"),
+        editorRightPanel: $("editor-right-panel"),
+        visibilityRow: $("visibility-row"),
       };
 
+      // цветовой индикатор
       function bindColorSwatch(swatch, input) {
         if (!swatch || !input) return;
         const update = () => { swatch.style.background = input.value; };
@@ -596,6 +604,32 @@
       });
       if (mode === 'overlay') setInterval(() => set(ref(db, "overlay/status/heartbeat"), Date.now()), 2000);
 
+      // ============ МИКРОФОН ============
+      let micStream = null;
+      async function toggleMic() {
+        if (micStream) {
+          micStream.getTracks().forEach(t => t.stop());
+          micStream = null;
+          E.micButton.textContent = '🎤 Микрофон';
+          return;
+        }
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          // создаём невидимый аудиоэлемент в оверлее
+          const audioEl = document.createElement('audio');
+          audioEl.srcObject = micStream;
+          audioEl.autoplay = true;
+          audioEl.muted = true; // чтобы не было эха, громкость регулируется в OBS
+          audioEl.volume = 1;
+          audioEl.id = 'mic-audio';
+          document.body.appendChild(audioEl);
+          E.micButton.textContent = '🎤 Стоп';
+        } catch (e) {
+          showNotification('❌ Нет доступа к микрофону');
+        }
+      }
+      on(E.micButton, 'click', toggleMic);
+
       // ============ ГОЛОСА ============
       function extractVoiceFromUrl(rawUrl) {
         try {
@@ -670,6 +704,16 @@
       function triggerMeme(id) {
         if (!items[id] || items[id].type !== 'meme') return;
         update(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`), { visible: true, playing: true });
+        // проигрываем звук появления, если есть
+        const item = items[id];
+        if (item.appearanceSound) {
+          const audio = new Audio(item.appearanceSound);
+          audio.volume = item.appearanceSoundObs ? 1 : 0; // громкость 1 для OBS, 0 для панели (управляется через OBS)
+          audio.play().catch(() => {});
+          if (!item.appearanceSoundObs) {
+            // если только для панели, отправляем аудио в OBS? упростим: просто играем локально
+          }
+        }
       }
       function handleMemeEnded(id) {
         update(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`), { playing: false, visible: false });
@@ -728,6 +772,8 @@
           memeAudio: payload.memeAudio || null,
           chromaColor: payload.chromaColor || null,
           chromaEnabled: payload.chromaEnabled || false,
+          appearanceSound: payload.appearanceSound || null,
+          appearanceSoundObs: payload.appearanceSoundObs || false,
           ...payload
         };
       }
@@ -1018,8 +1064,7 @@
         try { await navigator.clipboard.writeText(E.overlayLink.value); showNotification('✅ Ссылка скопирована'); }
         catch(e) { alert('Скопируйте вручную: ' + E.overlayLink.value); }
       });
-
-      // ================== ХОЛСТ ==================
+            // ================== ХОЛСТ ==================
       function updateSelectionHandles() {
         document.querySelectorAll('.canvas-item .resize-handle, .canvas-item .rotate-handle').forEach(h => h.remove());
         document.querySelectorAll('.canvas-item.selected').forEach(el => el.classList.remove('selected'));
@@ -1055,6 +1100,17 @@
         el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
         if (!item.visible) el.classList.add('invisible');
 
+        // Для аудио и TTS показываем только иконку
+        if (item.type === 'audio' || item.type === 'tts') {
+          const placeholder = document.createElement('div');
+          placeholder.className = 'canvas-placeholder';
+          placeholder.innerHTML = '🎵';
+          el.appendChild(placeholder);
+          el.addEventListener('pointerdown', canvasPointerDown);
+          return el;
+        }
+
+        // Для видео, изображений, мемов показываем превью (для видео без звука)
         const previewUrl = item.type === 'meme'
           ? (item.memeVideo || item.memeImage)
           : (item.type === 'image' || item.type === 'video' ? item.url : null);
@@ -1067,7 +1123,7 @@
           inner.style.height = '100%';
           inner.style.objectFit = 'fill';
           if (tag === 'video') {
-            inner.muted = true;
+            inner.muted = true;      // без звука на холсте
             inner.loop = true;
             inner.playsInline = true;
             inner.autoplay = false;
@@ -1081,10 +1137,10 @@
           };
           el.appendChild(inner);
         } else {
+          // Для YouTube или текста показываем иконку
           const placeholder = document.createElement('div');
           placeholder.className = 'canvas-placeholder';
-          if (item.type === 'audio' || item.type === 'tts') placeholder.innerHTML = '🎵';
-          else if (item.type === 'youtube') placeholder.innerHTML = '📺';
+          if (item.type === 'youtube') placeholder.innerHTML = '📺';
           else placeholder.innerHTML = '📝';
           el.appendChild(placeholder);
         }
@@ -1113,20 +1169,22 @@
             el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
             el.style.display = 'flex';
             el.classList.toggle('invisible', !item.visible);
-            const inner = el.querySelector('img, video');
-            const previewUrl = item.type === 'meme'
-              ? (item.memeVideo || item.memeImage)
-              : (item.type === 'image' || item.type === 'video' ? item.url : null);
-            if (previewUrl && inner && inner.src !== previewUrl) {
-              inner.src = previewUrl;
-            } else if (!previewUrl && inner) {
-              inner.remove();
-              const placeholder = document.createElement('div');
-              placeholder.className = 'canvas-placeholder';
-              if (item.type === 'audio' || item.type === 'tts') placeholder.innerHTML = '🎵';
-              else if (item.type === 'youtube') placeholder.innerHTML = '📺';
-              else placeholder.innerHTML = '📝';
-              el.appendChild(placeholder);
+            // Обновляем превью для видео/изображений, но не трогаем аудио
+            if (item.type !== 'audio' && item.type !== 'tts') {
+              const inner = el.querySelector('img, video');
+              const previewUrl = item.type === 'meme'
+                ? (item.memeVideo || item.memeImage)
+                : (item.type === 'image' || item.type === 'video' ? item.url : null);
+              if (previewUrl && inner && inner.src !== previewUrl) {
+                inner.src = previewUrl;
+              } else if (!previewUrl && inner) {
+                inner.remove();
+                const placeholder = document.createElement('div');
+                placeholder.className = 'canvas-placeholder';
+                if (item.type === 'youtube') placeholder.innerHTML = '📺';
+                else placeholder.innerHTML = '📝';
+                el.appendChild(placeholder);
+              }
             }
           }
         });
@@ -1335,35 +1393,47 @@
       on(E.pickChromaColor, 'click', () => { E.fields.selectedChromaColor?.click(); });
       on(E.pickMemeChromaColor, 'click', () => { E.fields.selectedMemeChromaColor?.click(); });
 
+      // ================== ЗВУК ПОЯВЛЕНИЯ ==================
+      function playAppearanceSound(item) {
+        if (!item.appearanceSound) return;
+        const audio = new Audio(item.appearanceSound);
+        audio.volume = item.appearanceSoundObs ? 1 : 0; // громкость 1 для OBS, 0 для панели (управление через OBS)
+        audio.play().catch(() => {});
+        // Если нужно отправить звук именно в OBS, можно создать скрытый Audio элемент и управлять muted
+        if (item.appearanceSoundObs) {
+          const obsAudio = document.createElement('audio');
+          obsAudio.src = item.appearanceSound;
+          obsAudio.autoplay = true;
+          obsAudio.muted = false;
+          obsAudio.volume = 1;
+          obsAudio.style.display = 'none';
+          document.body.appendChild(obsAudio);
+          obsAudio.addEventListener('ended', () => obsAudio.remove());
+        }
+      }
+
       // ================== РЕДАКТОР ==================
       function selectItem(id) {
         selectedItemId = id;
         removeObsAudioListeners();
         const item = items[id];
         if (!item) return;
-        if (E.fields.selectedVisible) E.fields.selectedVisible.checked = item.visible !== false;
-        if (E.fields.selectedLeft) E.fields.selectedLeft.value = Math.round(item.position?.left || 0);
-        if (E.fields.selectedTop) E.fields.selectedTop.value = Math.round(item.position?.top || 0);
-        if (E.fields.selectedWidth) E.fields.selectedWidth.value = Math.round(item.size?.width || 320);
-        if (E.fields.selectedHeight) E.fields.selectedHeight.value = Math.round(item.size?.height || 240);
-        if (E.fields.selectedRotation) E.fields.selectedRotation.value = item.rotation || 0;
+
+        // Скрываем все секции
         E.textSettings.classList.add('hidden');
         E.mediaSettings.classList.add('hidden');
         E.chromaSettings.classList.add('hidden');
         E.memeSettings.classList.add('hidden');
+        E.appearanceSoundSettings.classList.add('hidden');
         E.audioPreviewBox.classList.add('hidden');
         E.audioObsBox.classList.add('hidden');
         if (E.mediaPreview) E.mediaPreview.innerHTML = '';
 
-        if (item.type === 'text') {
-          E.textSettings.classList.remove('hidden');
-          E.fields.selectedText.value = item.text || '';
-          E.fields.selectedFontSize.value = item.style?.fontSize || 36;
-          E.fields.selectedColor.value = item.style?.color || '#fff';
-          E.fields.selectedBold.checked = item.style?.bold || false;
-          E.fields.selectedItalic.checked = item.style?.italic || false;
-          E.fields.selectedStrike.checked = item.style?.strike || false;
-        } else if (item.type === 'audio' || item.type === 'tts') {
+        // Скрываем панель видимости по умолчанию
+        if (E.visibilityRow) E.visibilityRow.style.display = 'none';
+
+        // Для аудио показываем только плееры, без видимости и координат
+        if (item.type === 'audio' || item.type === 'tts') {
           E.mediaSettings.classList.remove('hidden');
           E.audioPreviewBox.classList.remove('hidden');
           E.audioObsBox.classList.remove('hidden');
@@ -1372,30 +1442,53 @@
           E.audioObs.load(); E.audioPreview.load();
           setupObsAudioListeners(id);
           if (item.playing) E.audioObs.play().catch(() => {});
-        } else if (item.type === 'image' || item.type === 'video') {
-          E.mediaSettings.classList.remove('hidden');
-          E.chromaSettings.classList.remove('hidden');
-          if (E.fields.selectedChromaColor) E.fields.selectedChromaColor.value = item.chromaColor || '#00ff00';
-          if (E.fields.selectedChromaEnabled) E.fields.selectedChromaEnabled.checked = item.chromaEnabled === true;
-          if (item.type === 'video') {
-            if (E.mediaPreview) E.mediaPreview.innerHTML = `<video src="${item.url}" controls style="width:100%; max-height:200px;"></video>`;
-          }
-        } else if (item.type === 'meme') {
-          E.memeSettings.classList.remove('hidden');
-          if (E.fields.selectedMemeVideo) E.fields.selectedMemeVideo.value = item.memeVideo || '';
-          if (E.fields.selectedMemeImage) E.fields.selectedMemeImage.value = item.memeImage || '';
-          if (E.fields.selectedMemeAudio) E.fields.selectedMemeAudio.value = item.memeAudio || '';
-          if (E.fields.selectedMemeHotkey) E.fields.selectedMemeHotkey.value = item.hotkey || '';
-          if (E.fields.selectedMemeChromaColor) E.fields.selectedMemeChromaColor.value = item.chromaColor || '#00ff00';
-          if (E.fields.selectedMemeChromaEnabled) E.fields.selectedMemeChromaEnabled.checked = item.chromaEnabled === true;
-        } else if (item.type === 'youtube') {
-          E.mediaSettings.classList.remove('hidden');
-          const iframe = document.createElement('iframe');
-          iframe.src = `https://www.youtube.com/embed/${item.videoId}?autoplay=0&controls=0&rel=0&modestbranding=1&showinfo=0&enablejsapi=1`;
-          iframe.style.width = '100%'; iframe.style.height = '200px';
-          if (E.mediaPreview) {
-            E.mediaPreview.innerHTML = '';
-            E.mediaPreview.appendChild(iframe);
+          // видимость и координаты не показываем
+        } else {
+          // Для остальных типов показываем видимость
+          if (E.visibilityRow) E.visibilityRow.style.display = '';
+          if (E.fields.selectedVisible) E.fields.selectedVisible.checked = item.visible !== false;
+
+          if (item.type === 'text') {
+            E.textSettings.classList.remove('hidden');
+            E.fields.selectedText.value = item.text || '';
+            E.fields.selectedFontSize.value = item.style?.fontSize || 36;
+            E.fields.selectedColor.value = item.style?.color || '#fff';
+            E.fields.selectedBold.checked = item.style?.bold || false;
+            E.fields.selectedItalic.checked = item.style?.italic || false;
+            E.fields.selectedStrike.checked = item.style?.strike || false;
+          } else if (item.type === 'image' || item.type === 'video') {
+            E.mediaSettings.classList.remove('hidden');
+            E.chromaSettings.classList.remove('hidden');
+            if (E.fields.selectedChromaColor) E.fields.selectedChromaColor.value = item.chromaColor || '#00ff00';
+            if (E.fields.selectedChromaEnabled) E.fields.selectedChromaEnabled.checked = item.chromaEnabled === true;
+            if (item.type === 'video' && E.mediaPreview) {
+              E.mediaPreview.innerHTML = `<video src="${item.url}" controls style="width:100%; max-height:200px;"></video>`;
+            }
+            // Звук появления
+            E.appearanceSoundSettings.classList.remove('hidden');
+            if (E.fields.selectedAppearanceSound) E.fields.selectedAppearanceSound.value = item.appearanceSound || '';
+            if (E.fields.selectedAppearanceSoundObs) E.fields.selectedAppearanceSoundObs.checked = item.appearanceSoundObs === true;
+          } else if (item.type === 'meme') {
+            E.memeSettings.classList.remove('hidden');
+            if (E.fields.selectedMemeVideo) E.fields.selectedMemeVideo.value = item.memeVideo || '';
+            if (E.fields.selectedMemeImage) E.fields.selectedMemeImage.value = item.memeImage || '';
+            if (E.fields.selectedMemeAudio) E.fields.selectedMemeAudio.value = item.memeAudio || '';
+            if (E.fields.selectedMemeHotkey) E.fields.selectedMemeHotkey.value = item.hotkey || '';
+            if (E.fields.selectedMemeChromaColor) E.fields.selectedMemeChromaColor.value = item.chromaColor || '#00ff00';
+            if (E.fields.selectedMemeChromaEnabled) E.fields.selectedMemeChromaEnabled.checked = item.chromaEnabled === true;
+            // Звук появления
+            E.appearanceSoundSettings.classList.remove('hidden');
+            if (E.fields.selectedAppearanceSound) E.fields.selectedAppearanceSound.value = item.appearanceSound || '';
+            if (E.fields.selectedAppearanceSoundObs) E.fields.selectedAppearanceSoundObs.checked = item.appearanceSoundObs === true;
+          } else if (item.type === 'youtube') {
+            E.mediaSettings.classList.remove('hidden');
+            const iframe = document.createElement('iframe');
+            iframe.src = `https://www.youtube.com/embed/${item.videoId}?autoplay=0&controls=0&rel=0&modestbranding=1&showinfo=0&enablejsapi=1`;
+            iframe.style.width = '100%'; iframe.style.height = '200px';
+            if (E.mediaPreview) {
+              E.mediaPreview.innerHTML = '';
+              E.mediaPreview.appendChild(iframe);
+            }
           }
         }
         E.itemEditor.classList.remove('hidden');
@@ -1408,10 +1501,6 @@
         if (!item) return;
         const upd = {
           visible: E.fields.selectedVisible?.checked ?? true,
-          position: { left: Number(E.fields.selectedLeft?.value) || 0, top: Number(E.fields.selectedTop?.value) || 0 },
-          size: { width: Number(E.fields.selectedWidth?.value) || 320, height: Number(E.fields.selectedHeight?.value) || 240 },
-          rotation: Number(E.fields.selectedRotation?.value) || 0,
-          volume: Number(E.fields.selectedVolume?.value) ?? 1,
           playing: item.playing || false
         };
         if (item.type === 'text') {
@@ -1427,6 +1516,8 @@
         if (item.type === 'image' || item.type === 'video') {
           upd.chromaColor = E.fields.selectedChromaColor?.value || null;
           upd.chromaEnabled = E.fields.selectedChromaEnabled?.checked || false;
+          upd.appearanceSound = E.fields.selectedAppearanceSound?.value?.trim() || null;
+          upd.appearanceSoundObs = E.fields.selectedAppearanceSoundObs?.checked || false;
         }
         if (item.type === 'meme') {
           upd.memeVideo = E.fields.selectedMemeVideo?.value?.trim() || null;
@@ -1435,7 +1526,10 @@
           upd.hotkey = E.fields.selectedMemeHotkey?.value?.trim().toUpperCase() || null;
           upd.chromaColor = E.fields.selectedMemeChromaColor?.value || null;
           upd.chromaEnabled = E.fields.selectedMemeChromaEnabled?.checked || false;
+          upd.appearanceSound = E.fields.selectedAppearanceSound?.value?.trim() || null;
+          upd.appearanceSoundObs = E.fields.selectedAppearanceSoundObs?.checked || false;
         }
+        // Числовые поля (позиция, размер, поворот) не редактируются, поэтому не включаем их в upd
         await update(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}`), upd);
         showNotification('✅ Изменения сохранены');
       }
