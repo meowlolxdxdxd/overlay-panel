@@ -202,6 +202,10 @@
       background: #00ff00; cursor: pointer;
     }
     .color-input-hidden { position: absolute; opacity: 0; width: 0; height: 0; }
+
+    /* new fade slider style */
+    #fade-duration-container { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+    #fade-duration-value { min-width: 24px; text-align: right; }
   </style>
 </head>
 <body>
@@ -355,6 +359,12 @@
               Видимый
               <div class="switch"><input type="checkbox" id="selected-item-visible" /><span class="slider"></span></div>
             </label>
+            <!-- New fade duration control -->
+            <div id="fade-duration-container" class="hidden">
+              <label style="margin-bottom:0;">Плавность (сек)</label>
+              <input type="range" id="selected-fade-duration" min="0" max="10" step="0.1" value="0" style="width:100%;" />
+              <span id="fade-duration-value">0</span>
+            </div>
           </div>
         </div>
         <div class="editor-footer">
@@ -482,6 +492,7 @@
           selectedMemeChromaEnabled: $("selected-meme-chroma-enabled"),
           selectedAppearanceSound: $("selected-appearance-sound"),
           selectedAppearanceSoundObs: $("selected-appearance-sound-obs"),
+          selectedFadeDuration: $("selected-fade-duration"),
         },
         textSettings: $("text-settings"),
         mediaSettings: $("media-settings"),
@@ -525,6 +536,8 @@
         screenShareButton: $("screen-share-button"),
         editorRightPanel: $("editor-right-panel"),
         visibilityRow: $("visibility-row"),
+        fadeDurationContainer: $("fade-duration-container"),
+        fadeDurationValue: $("fade-duration-value"),
       };
 
       // цветовой индикатор
@@ -537,6 +550,13 @@
       }
       bindColorSwatch(E.chromaSwatch, E.fields.selectedChromaColor);
       bindColorSwatch(E.memeChromaSwatch, E.fields.selectedMemeChromaColor);
+
+      // fade duration slider
+      if (E.fields.selectedFadeDuration && E.fadeDurationValue) {
+        E.fields.selectedFadeDuration.addEventListener('input', () => {
+          E.fadeDurationValue.textContent = E.fields.selectedFadeDuration.value;
+        });
+      }
 
       let obsAudioHandlers = { play: null, pause: null, ended: null };
       function removeObsAudioListeners() {
@@ -604,38 +624,71 @@
       });
       if (mode === 'overlay') setInterval(() => set(ref(db, "overlay/status/heartbeat"), Date.now()), 2000);
 
-      // ============ МИКРОФОН ============
-      let micStream = null;
-      let micAudioEl = null;
-      async function toggleMic() {
-        if (micStream) {
-          micStream.getTracks().forEach(t => t.stop());
-          micStream = null;
-          if (micAudioEl) micAudioEl.remove();
-          micAudioEl = null;
-          E.micButton.textContent = '🎤 Микрофон';
-          return;
-        }
+      // ============ МИКРОФОН (через Firebase) ============
+      let micStreamInOverlay = null;
+      async function startMicInOverlay() {
+        if (micStreamInOverlay) return;
         try {
-          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          micAudioEl = document.createElement('audio');
-          micAudioEl.srcObject = micStream;
-          micAudioEl.autoplay = true;
-          micAudioEl.muted = false;  // ← звук должен идти в OBS
-          micAudioEl.volume = 1;
-          micAudioEl.id = 'mic-audio';
-          document.body.appendChild(micAudioEl);
-          E.micButton.textContent = '🎤 Стоп';
+          micStreamInOverlay = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const audioEl = document.createElement('audio');
+          audioEl.srcObject = micStreamInOverlay;
+          audioEl.autoplay = true;
+          audioEl.muted = false;
+          audioEl.volume = 1;
+          audioEl.id = 'mic-audio-overlay';
+          // вставляем прямо в stage, чтобы звук шёл в OBS
+          if (E.stageElement) E.stageElement.appendChild(audioEl);
         } catch (e) {
-          showNotification('❌ Нет доступа к микрофону');
+          console.warn('Не удалось захватить микрофон в оверлее', e);
         }
       }
-      on(E.micButton, 'click', toggleMic);
+      function stopMicInOverlay() {
+        if (micStreamInOverlay) {
+          micStreamInOverlay.getTracks().forEach(t => t.stop());
+          micStreamInOverlay = null;
+          const el = document.getElementById('mic-audio-overlay');
+          if (el) el.remove();
+        }
+      }
 
-      // ============ SCREEN SHARE ============
+      // На панели кнопка только переключает флаг
+      async function toggleMicFlag() {
+        if (!activeRoomId) return;
+        const micRef = ref(db, `overlay/rooms/${activeRoomId}/micActive`);
+        const snap = await get(micRef);
+        const current = snap.val() || false;
+        await set(micRef, !current);
+      }
+
+      if (mode === 'overlay') {
+        // Слушаем флаг микрофона
+        const roomFromUrl = urlParams.get("room");
+        if (roomFromUrl) {
+          const micRef = ref(db, `overlay/rooms/${roomFromUrl}/micActive`);
+          onValue(micRef, (snap) => {
+            if (snap.val()) {
+              startMicInOverlay();
+            } else {
+              stopMicInOverlay();
+            }
+          });
+        }
+      }
+
+      on(E.micButton, 'click', () => {
+        if (mode === 'control') {
+          toggleMicFlag();
+          // Обновляем текст кнопки по текущему состоянию
+          get(ref(db, `overlay/rooms/${activeRoomId}/micActive`)).then(snap => {
+            E.micButton.textContent = snap.val() ? '🎤 Стоп' : '🎤 Микрофон';
+          });
+        }
+      });
+
+      // ============ SCREEN SHARE (локально на панели) ============
       let screenStream = null;
       async function startScreenShare() {
-        if (screenStream) return; // уже идёт захват
+        if (screenStream) return;
         try {
           screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
           const track = screenStream.getVideoTracks()[0];
@@ -667,7 +720,6 @@
           screenStream.getTracks().forEach(t => t.stop());
           screenStream = null;
         }
-        // удаляем все элементы screenshare из комнаты
         const allItems = items || {};
         for (const [id, item] of Object.entries(allItems)) {
           if (item?.type === 'screenshare') {
@@ -678,6 +730,7 @@
       }
 
       on(E.screenShareButton, 'click', async () => {
+        if (!activeRoomId) return;
         if (screenStream) {
           stopScreenShare();
         } else {
@@ -836,6 +889,7 @@
           chromaEnabled: payload.chromaEnabled || false,
           appearanceSound: payload.appearanceSound || null,
           appearanceSoundObs: payload.appearanceSoundObs || false,
+          fadeDuration: payload.fadeDuration || 0,   // new field
           ...payload
         };
       }
@@ -1109,6 +1163,10 @@
         });
         updateOverlayLink(roomId);
         renderRoomSlots(rooms);
+        // Update mic button state
+        get(ref(db, `overlay/rooms/${roomId}/micActive`)).then(snap => {
+          E.micButton.textContent = snap.val() ? '🎤 Стоп' : '🎤 Микрофон';
+        });
       }
 
       function updateOverlayLink(roomId) {
@@ -1171,16 +1229,16 @@
         el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
         if (!item.visible) el.classList.add('invisible');
 
-        // Screenshare: показываем превью видео (без звука)
         if (item.type === 'screenshare') {
           const video = document.createElement('video');
           video.style.width = '100%';
           video.style.height = '100%';
           video.muted = true;
-          video.autoplay = false;
+          video.autoplay = true;
           video.loop = false;
           if (screenStream) {
             video.srcObject = screenStream;
+            video.play().catch(() => {});
           }
           el.appendChild(video);
           el.addEventListener('pointerdown', canvasPointerDown);
@@ -1257,9 +1315,10 @@
               const video = el.querySelector('video');
               if (video && screenStream && video.srcObject !== screenStream) {
                 video.srcObject = screenStream;
+                video.play().catch(() => {});
               }
             } else if (item.type === 'audio' || item.type === 'tts' || item.type === 'youtube' || item.type === 'text') {
-              // только обновляем видимость
+              // only update visibility
             } else {
               const inner = el.querySelector('img, video');
               const previewUrl = item.type === 'meme'
@@ -1518,6 +1577,7 @@
         if (E.mediaPreview) E.mediaPreview.innerHTML = '';
 
         if (E.visibilityRow) E.visibilityRow.style.display = 'none';
+        if (E.fadeDurationContainer) E.fadeDurationContainer.classList.add('hidden');
 
         if (item.type === 'audio' || item.type === 'tts') {
           E.mediaSettings.classList.remove('hidden');
@@ -1531,10 +1591,15 @@
         } else if (item.type === 'screenshare') {
           if (E.visibilityRow) E.visibilityRow.style.display = '';
           if (E.fields.selectedVisible) E.fields.selectedVisible.checked = item.visible !== false;
-          // минимум полей
         } else {
           if (E.visibilityRow) E.visibilityRow.style.display = '';
           if (E.fields.selectedVisible) E.fields.selectedVisible.checked = item.visible !== false;
+          // Show fade duration for all types except audio/tts (can be extended)
+          if (E.fadeDurationContainer) E.fadeDurationContainer.classList.remove('hidden');
+          if (E.fields.selectedFadeDuration) {
+            E.fields.selectedFadeDuration.value = item.fadeDuration || 0;
+            if (E.fadeDurationValue) E.fadeDurationValue.textContent = item.fadeDuration || 0;
+          }
 
           if (item.type === 'text') {
             E.textSettings.classList.remove('hidden');
@@ -1589,6 +1654,10 @@
           visible: E.fields.selectedVisible?.checked ?? true,
           playing: item.playing || false
         };
+        // fade duration
+        if (E.fields.selectedFadeDuration) {
+          upd.fadeDuration = parseFloat(E.fields.selectedFadeDuration.value) || 0;
+        }
         if (item.type === 'text') {
           upd.text = E.fields.selectedText?.value || '';
           upd.style = {
@@ -1615,7 +1684,6 @@
           upd.appearanceSound = E.fields.selectedAppearanceSound?.value?.trim() || null;
           upd.appearanceSoundObs = E.fields.selectedAppearanceSoundObs?.checked || false;
         }
-        // Для screenshare сохраняем только visible
         await update(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}`), upd);
         showNotification('✅ Изменения сохранены');
       }
@@ -1666,7 +1734,7 @@
         });
       }
 
-      // ================== ОВЕРЛЕЙ ==================
+      // ================== ОВЕРЛЕЙ (обновлён с fade) ==================
       function refreshOverlay() {
         if (!E.stageElement) return;
         E.stageElement.innerHTML = "";
@@ -1684,8 +1752,12 @@
           el.style.height = ((item.size?.height || 240) / STAGE_HEIGHT * 100) + '%';
           el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
           el.style.overflow = 'hidden';
+          // fade transition
+          const dur = item.fadeDuration || 0;
+          el.style.transition = `opacity ${dur}s ease`;
+          el.style.opacity = item.visible ? '1' : '0';
           if ((item.type === 'audio' || item.type === 'tts') && !item.visible) {
-            el.style.opacity = '0'; el.style.pointerEvents = 'none'; el.style.width = '1px'; el.style.height = '1px';
+            el.style.width = '1px'; el.style.height = '1px';
           }
 
           let inner;
@@ -1749,6 +1821,7 @@
             inner.autoplay = true;
             inner.muted = true;
             inner.loop = false;
+            // В оверлее поток недоступен, будет просто чёрный экран
             if (screenStream) {
               inner.srcObject = screenStream;
               inner.play().catch(() => {});
