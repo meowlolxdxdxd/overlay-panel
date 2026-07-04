@@ -219,7 +219,6 @@
           <span id="overlay-status-dot" style="width:12px; height:12px; border-radius:50%; background:red; display:inline-block;"></span>
           <span id="overlay-status-text" style="font-size:13px;">Оверлей не подключён</span>
         </div>
-        <!-- Новый блок управления микрофоном -->
         <div style="display:flex; align-items:center; gap:6px; margin-left:8px;">
           <button id="request-mic-permission" style="width:auto; padding:6px 10px; font-size:13px;">🎙️ Разрешить микрофон</button>
           <select id="mic-device-select" style="width:auto; padding:6px; font-size:13px;" disabled>
@@ -628,7 +627,7 @@
       });
       if (mode === 'overlay') setInterval(() => set(ref(db, "overlay/status/heartbeat"), Date.now()), 2000);
 
-      // ============ МИКРОФОН (управление разрешениями) ============
+      // ============ МИКРОФОН ============
       let micStreamInOverlay = null;
       async function startMicInOverlay(deviceId) {
         stopMicInOverlay();
@@ -655,18 +654,13 @@
         }
       }
 
-      // Запрос разрешения микрофона на панели управления
       async function requestMicPermissionAndListDevices() {
         try {
-          // Сначала запрашиваем доступ к любому микрофону
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          // Получаем список всех аудиоустройств
           const devices = await navigator.mediaDevices.enumerateDevices();
           const audioInputs = devices.filter(d => d.kind === 'audioinput');
-          // Останавливаем временный поток
           stream.getTracks().forEach(t => t.stop());
 
-          // Заполняем селект
           if (E.micDeviceSelect) {
             E.micDeviceSelect.innerHTML = '<option value="">Выберите микрофон</option>';
             audioInputs.forEach(device => {
@@ -676,7 +670,6 @@
               E.micDeviceSelect.appendChild(opt);
             });
             E.micDeviceSelect.disabled = false;
-            // Загружаем сохранённый deviceId из Firebase
             if (activeRoomId) {
               const snap = await get(ref(db, `overlay/rooms/${activeRoomId}/micDeviceId`));
               if (snap.exists()) E.micDeviceSelect.value = snap.val();
@@ -688,41 +681,24 @@
         }
       }
 
-      // Кнопка "Разрешить микрофон"
       on(E.requestMicPermission, 'click', requestMicPermissionAndListDevices);
 
-      // При изменении выбора устройства сохраняем в Firebase
       on(E.micDeviceSelect, 'change', () => {
         if (!activeRoomId) return;
         const deviceId = E.micDeviceSelect.value;
         set(ref(db, `overlay/rooms/${activeRoomId}/micDeviceId`), deviceId || null);
       });
 
-      // Кнопка включения/выключения микрофона (флаг micActive)
       async function toggleMicActive() {
         if (!activeRoomId) return;
         const micRef = ref(db, `overlay/rooms/${activeRoomId}/micActive`);
         const snap = await get(micRef);
         const current = snap.val() || false;
         await set(micRef, !current);
-        // Кнопка обновится через onValue ниже
       }
 
       on(E.micButton, 'click', toggleMicActive);
 
-      // Слушаем изменения micActive и micDeviceId для панели (обновление текста кнопки)
-      if (mode === 'control') {
-        // Обновление текста кнопки при изменении micActive в текущей комнате
-        const updateMicButtonText = (active) => {
-          E.micButton.textContent = active ? '🎤 Стоп' : '🎤 Микрофон';
-        };
-        // Подпишемся при переключении комнаты
-        const origSwitchToRoom = switchToRoom;
-        window.switchToRoom = function(roomId) { /* будет переопределена ниже */ };
-        // Сделаем через прослушивание внутри switchToRoom
-      }
-
-      // ============ ОВЕРЛЕЙ: слушаем micActive и micDeviceId ============
       if (mode === 'overlay') {
         const roomFromUrl = urlParams.get("room");
         if (roomFromUrl) {
@@ -738,19 +714,45 @@
               stopMicInOverlay();
             }
           });
-          // Также слушаем изменение устройства, если микрофон уже включен
           onValue(micDeviceRef, async (snap) => {
             const deviceId = snap.val() || null;
             const activeSnap = await get(micActiveRef);
             if (activeSnap.val()) {
-              startMicInOverlay(deviceId); // перезапустит с новым устройством
+              startMicInOverlay(deviceId);
             }
           });
         }
       }
 
-      // ============ SCREEN SHARE (локально на панели) ============
+      // ============ SCREEN SHARE (capture & send frames to Firebase) ============
       let screenStream = null;
+      let screenCaptureInterval = null;
+
+      function captureAndSendFrame() {
+        if (!screenStream || !activeRoomId) return;
+        const videoTrack = screenStream.getVideoTracks()[0];
+        if (!videoTrack || videoTrack.readyState === 'ended') {
+          stopScreenShare();
+          return;
+        }
+        const video = document.createElement('video');
+        video.srcObject = screenStream;
+        video.play().then(() => {
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth || 1280;
+          canvas.height = video.videoHeight || 720;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+          set(ref(db, `overlay/rooms/${activeRoomId}/screenFrame`), {
+            dataUrl,
+            timestamp: Date.now()
+          });
+          video.pause();
+          video.srcObject = null;
+        }).catch(() => {});
+      }
+
       async function startScreenShare() {
         if (screenStream) return;
         try {
@@ -767,22 +769,32 @@
           const id = newRef.key;
 
           track.addEventListener('ended', () => {
+            stopScreenShare();
             remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`)).catch(() => {});
-            screenStream = null;
-            E.screenShareButton.textContent = '🖥️ Демонстрация экрана';
           });
 
+          // Start capturing frames
+          screenCaptureInterval = setInterval(captureAndSendFrame, 500);
+
           E.screenShareButton.textContent = '🖥️ Стоп демонстрация';
-          showNotification('✅ Демонстрация экрана добавлена (только на панели)');
+          showNotification('✅ Демонстрация экрана транслируется в оверлей');
         } catch (e) {
           showNotification('❌ Не удалось захватить экран: ' + e.message);
         }
       }
 
       function stopScreenShare() {
+        if (screenCaptureInterval) {
+          clearInterval(screenCaptureInterval);
+          screenCaptureInterval = null;
+        }
         if (screenStream) {
           screenStream.getTracks().forEach(t => t.stop());
           screenStream = null;
+        }
+        // Remove screen frame data
+        if (activeRoomId) {
+          set(ref(db, `overlay/rooms/${activeRoomId}/screenFrame`), null);
         }
         const allItems = items || {};
         for (const [id, item] of Object.entries(allItems)) {
@@ -801,6 +813,22 @@
           await startScreenShare();
         }
       });
+
+      // ============ ОВЕРЛЕЙ: слушаем screenFrame ============
+      if (mode === 'overlay') {
+        const roomFromUrl = urlParams.get("room");
+        if (roomFromUrl) {
+          const screenFrameRef = ref(db, `overlay/rooms/${roomFromUrl}/screenFrame`);
+          onValue(screenFrameRef, (snap) => {
+            const frameData = snap.val();
+            // Update existing screenshare item image
+            const img = document.querySelector(`#stage .overlay-item[data-type="screenshare"] img`);
+            if (img && frameData && frameData.dataUrl) {
+              img.src = frameData.dataUrl;
+            }
+          });
+        }
+      }
 
       // ============ ГОЛОСА ============
       function extractVoiceFromUrl(rawUrl) {
@@ -1227,7 +1255,6 @@
         });
         updateOverlayLink(roomId);
         renderRoomSlots(rooms);
-        // Обновить состояние кнопки микрофона и селекта устройств
         if (mode === 'control') {
           get(ref(db, `overlay/rooms/${roomId}/micActive`)).then(snap => {
             E.micButton.textContent = snap.val() ? '🎤 Стоп' : '🎤 Микрофон';
@@ -1310,11 +1337,6 @@
           if (screenStream) {
             video.srcObject = screenStream;
             video.play().catch(() => {});
-          } else {
-            const placeholder = document.createElement('div');
-            placeholder.className = 'canvas-placeholder';
-            placeholder.innerHTML = '🖥️';
-            el.appendChild(placeholder);
           }
           el.appendChild(video);
           el.addEventListener('pointerdown', canvasPointerDown);
@@ -1392,23 +1414,6 @@
               if (video && screenStream && video.srcObject !== screenStream) {
                 video.srcObject = screenStream;
                 video.play().catch(() => {});
-              }
-            } else if (item.type === 'audio' || item.type === 'tts' || item.type === 'youtube' || item.type === 'text') {
-              // only update visibility
-            } else {
-              const inner = el.querySelector('img, video');
-              const previewUrl = item.type === 'meme'
-                ? (item.memeVideo || item.memeImage)
-                : (item.type === 'image' || item.type === 'video' ? item.url : null);
-              if (previewUrl && inner && inner.src !== previewUrl) {
-                inner.src = previewUrl;
-              } else if (!previewUrl && inner) {
-                inner.remove();
-                const placeholder = document.createElement('div');
-                placeholder.className = 'canvas-placeholder';
-                if (item.type === 'youtube') placeholder.innerHTML = '📺';
-                else placeholder.innerHTML = '📝';
-                el.appendChild(placeholder);
               }
             }
           }
@@ -1808,7 +1813,7 @@
         });
       }
 
-      // ================== ОВЕРЛЕЙ ==================
+      // ================== ОВЕРЛЕЙ (обновлённый screenshare) ==================
       function refreshOverlay() {
         if (!E.stageElement) return;
         E.stageElement.innerHTML = "";
@@ -1820,6 +1825,7 @@
           const el = document.createElement("div");
           el.className = "overlay-item";
           el.dataset.id = id;
+          el.dataset.type = item.type; // для поиска screenshare
           el.style.left = ((item.position?.left || 0) / STAGE_WIDTH * 100) + '%';
           el.style.top = ((item.position?.top || 0) / STAGE_HEIGHT * 100) + '%';
           el.style.width = ((item.size?.width || 320) / STAGE_WIDTH * 100) + '%';
@@ -1889,28 +1895,14 @@
               }
             }
           } else if (item.type === 'screenshare') {
-            inner = document.createElement('video');
-            inner.style.width = '100%'; inner.style.height = '100%';
-            inner.autoplay = true;
-            inner.muted = true;
-            inner.loop = false;
-            // В оверлее поток недоступен, будет чёрный экран, поэтому показываем заглушку
-            const placeholder = document.createElement('div');
-            placeholder.className = 'canvas-placeholder';
-            placeholder.innerHTML = '🖥️ (Добавьте источник Захват окна в OBS)';
-            placeholder.style.position = 'absolute';
-            placeholder.style.top = '0';
-            placeholder.style.left = '0';
-            placeholder.style.width = '100%';
-            placeholder.style.height = '100%';
-            placeholder.style.display = 'flex';
-            placeholder.style.alignItems = 'center';
-            placeholder.style.justifyContent = 'center';
-            placeholder.style.background = 'rgba(0,0,0,0.7)';
-            placeholder.style.color = '#fff';
-            placeholder.style.fontSize = '14px';
+            // В оверлее используем img для приема кадров из Firebase
+            inner = document.createElement('img');
+            inner.style.width = '100%';
+            inner.style.height = '100%';
+            inner.style.objectFit = 'fill';
+            inner.alt = 'Screen Share';
+            // Начальное изображение может быть пустым, обновится из Firebase
             el.appendChild(inner);
-            el.appendChild(placeholder);
           } else if (item.type === 'youtube') {
             inner = document.createElement('iframe');
             inner.src = item.url;
