@@ -365,7 +365,7 @@
     </div>
   </div>
   <div id="dnd-notification"></div>
-    <script type="module">
+  <script type="module">
     (async () => {
       if (document.readyState === 'loading') await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
 
@@ -401,7 +401,7 @@
       const on = (el, event, handler) => el?.addEventListener(event, handler);
       const off = (el, event, handler) => el?.removeEventListener(event, handler);
 
-      // ========== ХРОМАКЕЙ (удаляет выбранный цвет) ==========
+      // ========== ХРОМАКЕЙ ==========
       function createChromaFilter(colorHex, id) {
         const existing = document.getElementById('chroma-filter-' + id);
         if (existing) existing.remove();
@@ -606,22 +606,25 @@
 
       // ============ МИКРОФОН ============
       let micStream = null;
+      let micAudioEl = null;
       async function toggleMic() {
         if (micStream) {
           micStream.getTracks().forEach(t => t.stop());
           micStream = null;
+          if (micAudioEl) micAudioEl.remove();
+          micAudioEl = null;
           E.micButton.textContent = '🎤 Микрофон';
           return;
         }
         try {
           micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const audioEl = document.createElement('audio');
-          audioEl.srcObject = micStream;
-          audioEl.autoplay = true;
-          audioEl.muted = true;
-          audioEl.volume = 1;
-          audioEl.id = 'mic-audio';
-          document.body.appendChild(audioEl);
+          micAudioEl = document.createElement('audio');
+          micAudioEl.srcObject = micStream;
+          micAudioEl.autoplay = true;
+          micAudioEl.muted = false;  // ← звук должен идти в OBS
+          micAudioEl.volume = 1;
+          micAudioEl.id = 'mic-audio';
+          document.body.appendChild(micAudioEl);
           E.micButton.textContent = '🎤 Стоп';
         } catch (e) {
           showNotification('❌ Нет доступа к микрофону');
@@ -631,26 +634,13 @@
 
       // ============ SCREEN SHARE ============
       let screenStream = null;
-      async function toggleScreenShare() {
-        if (screenStream) {
-          screenStream.getTracks().forEach(t => t.stop());
-          screenStream = null;
-          E.screenShareButton.textContent = '🖥️ Демонстрация экрана';
-          // убираем элемент screenshare из комнаты (если был)
-          const allItems = items || {};
-          for (const [id, item] of Object.entries(allItems)) {
-            if (item?.type === 'screenshare') {
-              await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
-            }
-          }
-          return;
-        }
+      async function startScreenShare() {
+        if (screenStream) return; // уже идёт захват
         try {
           screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
           const track = screenStream.getVideoTracks()[0];
           if (!track) throw new Error('No video track');
 
-          // Создаём элемент screenshare в Firebase
           const item = createDefaultItem('screenshare', {
             title: 'Screen Share',
             visible: true,
@@ -659,7 +649,6 @@
           const newRef = await push(itemsRef, item);
           const id = newRef.key;
 
-          // При остановке шаринга пользователем – удаляем элемент
           track.addEventListener('ended', () => {
             remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`)).catch(() => {});
             screenStream = null;
@@ -667,12 +656,34 @@
           });
 
           E.screenShareButton.textContent = '🖥️ Стоп демонстрация';
-          showNotification('✅ Демонстрация экрана добавлена в оверлей');
+          showNotification('✅ Демонстрация экрана добавлена');
         } catch (e) {
           showNotification('❌ Не удалось захватить экран: ' + e.message);
         }
       }
-      on(E.screenShareButton, 'click', toggleScreenShare);
+
+      function stopScreenShare() {
+        if (screenStream) {
+          screenStream.getTracks().forEach(t => t.stop());
+          screenStream = null;
+        }
+        // удаляем все элементы screenshare из комнаты
+        const allItems = items || {};
+        for (const [id, item] of Object.entries(allItems)) {
+          if (item?.type === 'screenshare') {
+            remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`)).catch(() => {});
+          }
+        }
+        E.screenShareButton.textContent = '🖥️ Демонстрация экрана';
+      }
+
+      on(E.screenShareButton, 'click', async () => {
+        if (screenStream) {
+          stopScreenShare();
+        } else {
+          await startScreenShare();
+        }
+      });
 
       // ============ ГОЛОСА ============
       function extractVoiceFromUrl(rawUrl) {
@@ -846,7 +857,11 @@
 
         if (type === 'tts') { await requestTTS(); return; }
         if (type === 'screenshare') {
-          await toggleScreenShare();
+          if (!screenStream) {
+            await startScreenShare();
+          } else {
+            showNotification('❌ Демонстрация экрана уже идёт');
+          }
           return;
         }
         if (type === 'meme') {
@@ -977,7 +992,8 @@
         if (E.labelNewMemeHotkey) E.labelNewMemeHotkey.classList.toggle('hidden', !isMeme);
       }
       on(E.fields.type, 'change', handleNewTypeChange);
-            // ============ ГОРЯЧИЕ КЛАВИШИ J+C, O+C ============
+
+      // ============ ГОРЯЧИЕ КЛАВИШИ J+C, O+C ============
       let jPressed = false, cPressed = false, oPressed = false;
       document.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
@@ -1155,12 +1171,18 @@
         el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
         if (!item.visible) el.classList.add('invisible');
 
-        // Screenshare показываем иконкой (в оверлее будет видео)
+        // Screenshare: показываем превью видео (без звука)
         if (item.type === 'screenshare') {
-          const placeholder = document.createElement('div');
-          placeholder.className = 'canvas-placeholder';
-          placeholder.innerHTML = '🖥️';
-          el.appendChild(placeholder);
+          const video = document.createElement('video');
+          video.style.width = '100%';
+          video.style.height = '100%';
+          video.muted = true;
+          video.autoplay = false;
+          video.loop = false;
+          if (screenStream) {
+            video.srcObject = screenStream;
+          }
+          el.appendChild(video);
           el.addEventListener('pointerdown', canvasPointerDown);
           return el;
         }
@@ -1231,7 +1253,12 @@
             el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
             el.style.display = 'flex';
             el.classList.toggle('invisible', !item.visible);
-            if (item.type === 'screenshare' || item.type === 'audio' || item.type === 'tts' || item.type === 'youtube' || item.type === 'text') {
+            if (item.type === 'screenshare') {
+              const video = el.querySelector('video');
+              if (video && screenStream && video.srcObject !== screenStream) {
+                video.srcObject = screenStream;
+              }
+            } else if (item.type === 'audio' || item.type === 'tts' || item.type === 'youtube' || item.type === 'text') {
               // только обновляем видимость
             } else {
               const inner = el.querySelector('img, video');
@@ -1597,11 +1624,7 @@
         if (!selectedItemId) return;
         const item = items[selectedItemId];
         if (item?.type === 'screenshare') {
-          if (screenStream) {
-            screenStream.getTracks().forEach(t => t.stop());
-            screenStream = null;
-            E.screenShareButton.textContent = '🖥️ Демонстрация экрана';
-          }
+          stopScreenShare();
         }
         if (item && item.supabasePath) await deleteFileFromSupabase(item.supabasePath);
         await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}`));
@@ -1788,9 +1811,7 @@
           row.querySelector('.edit-item').onclick = () => selectItem(id);
           row.querySelector('.delete-item').onclick = async () => {
             if (item.type === 'screenshare' && screenStream) {
-              screenStream.getTracks().forEach(t => t.stop());
-              screenStream = null;
-              E.screenShareButton.textContent = '🖥️ Демонстрация экрана';
+              stopScreenShare();
             }
             if (item && item.supabasePath) await deleteFileFromSupabase(item.supabasePath);
             await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
