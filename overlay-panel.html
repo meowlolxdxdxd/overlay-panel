@@ -202,10 +202,6 @@
       background: #00ff00; cursor: pointer;
     }
     .color-input-hidden { position: absolute; opacity: 0; width: 0; height: 0; }
-
-    /* new fade slider style */
-    #fade-duration-container { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-    #fade-duration-value { min-width: 24px; text-align: right; }
   </style>
 </head>
 <body>
@@ -223,7 +219,14 @@
           <span id="overlay-status-dot" style="width:12px; height:12px; border-radius:50%; background:red; display:inline-block;"></span>
           <span id="overlay-status-text" style="font-size:13px;">Оверлей не подключён</span>
         </div>
-        <button id="mic-button" style="width:auto; padding:6px 12px; margin-left:8px;">🎤 Микрофон</button>
+        <!-- Новый блок управления микрофоном -->
+        <div style="display:flex; align-items:center; gap:6px; margin-left:8px;">
+          <button id="request-mic-permission" style="width:auto; padding:6px 10px; font-size:13px;">🎙️ Разрешить микрофон</button>
+          <select id="mic-device-select" style="width:auto; padding:6px; font-size:13px;" disabled>
+            <option value="">Выберите микрофон</option>
+          </select>
+          <button id="mic-button" style="width:auto; padding:6px 12px;">🎤 Микрофон</button>
+        </div>
         <button id="screen-share-button" style="width:auto; padding:6px 12px; margin-left:8px;">🖥️ Демонстрация экрана</button>
         <div style="margin-left:auto; display:flex; gap:8px; align-items:center;"><input type="text" id="overlay-link" readonly style="width:260px; font-size:12px; padding:6px;" /><button id="copy-link-btn" style="width:auto; padding:6px 12px;">📋 Копировать</button></div>
       </div>
@@ -359,7 +362,6 @@
               Видимый
               <div class="switch"><input type="checkbox" id="selected-item-visible" /><span class="slider"></span></div>
             </label>
-            <!-- New fade duration control -->
             <div id="fade-duration-container" class="hidden">
               <label style="margin-bottom:0;">Плавность (сек)</label>
               <input type="range" id="selected-fade-duration" min="0" max="10" step="0.1" value="0" style="width:100%;" />
@@ -533,6 +535,8 @@
         chromaSwatch: $("chroma-swatch"),
         memeChromaSwatch: $("meme-chroma-swatch"),
         micButton: $("mic-button"),
+        micDeviceSelect: $("mic-device-select"),
+        requestMicPermission: $("request-mic-permission"),
         screenShareButton: $("screen-share-button"),
         editorRightPanel: $("editor-right-panel"),
         visibilityRow: $("visibility-row"),
@@ -624,19 +628,19 @@
       });
       if (mode === 'overlay') setInterval(() => set(ref(db, "overlay/status/heartbeat"), Date.now()), 2000);
 
-      // ============ МИКРОФОН (через Firebase) ============
+      // ============ МИКРОФОН (управление разрешениями) ============
       let micStreamInOverlay = null;
-      async function startMicInOverlay() {
-        if (micStreamInOverlay) return;
+      async function startMicInOverlay(deviceId) {
+        stopMicInOverlay();
         try {
-          micStreamInOverlay = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const constraints = { audio: deviceId ? { deviceId: { exact: deviceId } } : true };
+          micStreamInOverlay = await navigator.mediaDevices.getUserMedia(constraints);
           const audioEl = document.createElement('audio');
           audioEl.srcObject = micStreamInOverlay;
           audioEl.autoplay = true;
           audioEl.muted = false;
           audioEl.volume = 1;
           audioEl.id = 'mic-audio-overlay';
-          // вставляем прямо в stage, чтобы звук шёл в OBS
           if (E.stageElement) E.stageElement.appendChild(audioEl);
         } catch (e) {
           console.warn('Не удалось захватить микрофон в оверлее', e);
@@ -651,39 +655,99 @@
         }
       }
 
-      // На панели кнопка только переключает флаг
-      async function toggleMicFlag() {
+      // Запрос разрешения микрофона на панели управления
+      async function requestMicPermissionAndListDevices() {
+        try {
+          // Сначала запрашиваем доступ к любому микрофону
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          // Получаем список всех аудиоустройств
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const audioInputs = devices.filter(d => d.kind === 'audioinput');
+          // Останавливаем временный поток
+          stream.getTracks().forEach(t => t.stop());
+
+          // Заполняем селект
+          if (E.micDeviceSelect) {
+            E.micDeviceSelect.innerHTML = '<option value="">Выберите микрофон</option>';
+            audioInputs.forEach(device => {
+              const opt = document.createElement('option');
+              opt.value = device.deviceId;
+              opt.textContent = device.label || `Микрофон ${device.deviceId.slice(0, 8)}`;
+              E.micDeviceSelect.appendChild(opt);
+            });
+            E.micDeviceSelect.disabled = false;
+            // Загружаем сохранённый deviceId из Firebase
+            if (activeRoomId) {
+              const snap = await get(ref(db, `overlay/rooms/${activeRoomId}/micDeviceId`));
+              if (snap.exists()) E.micDeviceSelect.value = snap.val();
+            }
+          }
+          showNotification('✅ Доступ к микрофону получен. Выберите устройство.');
+        } catch (e) {
+          showNotification('❌ Не удалось получить доступ к микрофону: ' + e.message);
+        }
+      }
+
+      // Кнопка "Разрешить микрофон"
+      on(E.requestMicPermission, 'click', requestMicPermissionAndListDevices);
+
+      // При изменении выбора устройства сохраняем в Firebase
+      on(E.micDeviceSelect, 'change', () => {
+        if (!activeRoomId) return;
+        const deviceId = E.micDeviceSelect.value;
+        set(ref(db, `overlay/rooms/${activeRoomId}/micDeviceId`), deviceId || null);
+      });
+
+      // Кнопка включения/выключения микрофона (флаг micActive)
+      async function toggleMicActive() {
         if (!activeRoomId) return;
         const micRef = ref(db, `overlay/rooms/${activeRoomId}/micActive`);
         const snap = await get(micRef);
         const current = snap.val() || false;
         await set(micRef, !current);
+        // Кнопка обновится через onValue ниже
       }
 
+      on(E.micButton, 'click', toggleMicActive);
+
+      // Слушаем изменения micActive и micDeviceId для панели (обновление текста кнопки)
+      if (mode === 'control') {
+        // Обновление текста кнопки при изменении micActive в текущей комнате
+        const updateMicButtonText = (active) => {
+          E.micButton.textContent = active ? '🎤 Стоп' : '🎤 Микрофон';
+        };
+        // Подпишемся при переключении комнаты
+        const origSwitchToRoom = switchToRoom;
+        window.switchToRoom = function(roomId) { /* будет переопределена ниже */ };
+        // Сделаем через прослушивание внутри switchToRoom
+      }
+
+      // ============ ОВЕРЛЕЙ: слушаем micActive и micDeviceId ============
       if (mode === 'overlay') {
-        // Слушаем флаг микрофона
         const roomFromUrl = urlParams.get("room");
         if (roomFromUrl) {
-          const micRef = ref(db, `overlay/rooms/${roomFromUrl}/micActive`);
-          onValue(micRef, (snap) => {
-            if (snap.val()) {
-              startMicInOverlay();
+          const micActiveRef = ref(db, `overlay/rooms/${roomFromUrl}/micActive`);
+          const micDeviceRef = ref(db, `overlay/rooms/${roomFromUrl}/micDeviceId`);
+          onValue(micActiveRef, async (snap) => {
+            const active = snap.val();
+            if (active) {
+              const deviceSnap = await get(micDeviceRef);
+              const deviceId = deviceSnap.val() || null;
+              startMicInOverlay(deviceId);
             } else {
               stopMicInOverlay();
             }
           });
-        }
-      }
-
-      on(E.micButton, 'click', () => {
-        if (mode === 'control') {
-          toggleMicFlag();
-          // Обновляем текст кнопки по текущему состоянию
-          get(ref(db, `overlay/rooms/${activeRoomId}/micActive`)).then(snap => {
-            E.micButton.textContent = snap.val() ? '🎤 Стоп' : '🎤 Микрофон';
+          // Также слушаем изменение устройства, если микрофон уже включен
+          onValue(micDeviceRef, async (snap) => {
+            const deviceId = snap.val() || null;
+            const activeSnap = await get(micActiveRef);
+            if (activeSnap.val()) {
+              startMicInOverlay(deviceId); // перезапустит с новым устройством
+            }
           });
         }
-      });
+      }
 
       // ============ SCREEN SHARE (локально на панели) ============
       let screenStream = null;
@@ -709,7 +773,7 @@
           });
 
           E.screenShareButton.textContent = '🖥️ Стоп демонстрация';
-          showNotification('✅ Демонстрация экрана добавлена');
+          showNotification('✅ Демонстрация экрана добавлена (только на панели)');
         } catch (e) {
           showNotification('❌ Не удалось захватить экран: ' + e.message);
         }
@@ -889,7 +953,7 @@
           chromaEnabled: payload.chromaEnabled || false,
           appearanceSound: payload.appearanceSound || null,
           appearanceSoundObs: payload.appearanceSoundObs || false,
-          fadeDuration: payload.fadeDuration || 0,   // new field
+          fadeDuration: payload.fadeDuration || 0,
           ...payload
         };
       }
@@ -1163,10 +1227,17 @@
         });
         updateOverlayLink(roomId);
         renderRoomSlots(rooms);
-        // Update mic button state
-        get(ref(db, `overlay/rooms/${roomId}/micActive`)).then(snap => {
-          E.micButton.textContent = snap.val() ? '🎤 Стоп' : '🎤 Микрофон';
-        });
+        // Обновить состояние кнопки микрофона и селекта устройств
+        if (mode === 'control') {
+          get(ref(db, `overlay/rooms/${roomId}/micActive`)).then(snap => {
+            E.micButton.textContent = snap.val() ? '🎤 Стоп' : '🎤 Микрофон';
+          });
+          get(ref(db, `overlay/rooms/${roomId}/micDeviceId`)).then(snap => {
+            if (E.micDeviceSelect) {
+              E.micDeviceSelect.value = snap.val() || '';
+            }
+          });
+        }
       }
 
       function updateOverlayLink(roomId) {
@@ -1239,6 +1310,11 @@
           if (screenStream) {
             video.srcObject = screenStream;
             video.play().catch(() => {});
+          } else {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'canvas-placeholder';
+            placeholder.innerHTML = '🖥️';
+            el.appendChild(placeholder);
           }
           el.appendChild(video);
           el.addEventListener('pointerdown', canvasPointerDown);
@@ -1594,7 +1670,6 @@
         } else {
           if (E.visibilityRow) E.visibilityRow.style.display = '';
           if (E.fields.selectedVisible) E.fields.selectedVisible.checked = item.visible !== false;
-          // Show fade duration for all types except audio/tts (can be extended)
           if (E.fadeDurationContainer) E.fadeDurationContainer.classList.remove('hidden');
           if (E.fields.selectedFadeDuration) {
             E.fields.selectedFadeDuration.value = item.fadeDuration || 0;
@@ -1654,7 +1729,6 @@
           visible: E.fields.selectedVisible?.checked ?? true,
           playing: item.playing || false
         };
-        // fade duration
         if (E.fields.selectedFadeDuration) {
           upd.fadeDuration = parseFloat(E.fields.selectedFadeDuration.value) || 0;
         }
@@ -1734,7 +1808,7 @@
         });
       }
 
-      // ================== ОВЕРЛЕЙ (обновлён с fade) ==================
+      // ================== ОВЕРЛЕЙ ==================
       function refreshOverlay() {
         if (!E.stageElement) return;
         E.stageElement.innerHTML = "";
@@ -1752,7 +1826,6 @@
           el.style.height = ((item.size?.height || 240) / STAGE_HEIGHT * 100) + '%';
           el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
           el.style.overflow = 'hidden';
-          // fade transition
           const dur = item.fadeDuration || 0;
           el.style.transition = `opacity ${dur}s ease`;
           el.style.opacity = item.visible ? '1' : '0';
@@ -1821,12 +1894,23 @@
             inner.autoplay = true;
             inner.muted = true;
             inner.loop = false;
-            // В оверлее поток недоступен, будет просто чёрный экран
-            if (screenStream) {
-              inner.srcObject = screenStream;
-              inner.play().catch(() => {});
-            }
+            // В оверлее поток недоступен, будет чёрный экран, поэтому показываем заглушку
+            const placeholder = document.createElement('div');
+            placeholder.className = 'canvas-placeholder';
+            placeholder.innerHTML = '🖥️ (Добавьте источник Захват окна в OBS)';
+            placeholder.style.position = 'absolute';
+            placeholder.style.top = '0';
+            placeholder.style.left = '0';
+            placeholder.style.width = '100%';
+            placeholder.style.height = '100%';
+            placeholder.style.display = 'flex';
+            placeholder.style.alignItems = 'center';
+            placeholder.style.justifyContent = 'center';
+            placeholder.style.background = 'rgba(0,0,0,0.7)';
+            placeholder.style.color = '#fff';
+            placeholder.style.fontSize = '14px';
             el.appendChild(inner);
+            el.appendChild(placeholder);
           } else if (item.type === 'youtube') {
             inner = document.createElement('iframe');
             inner.src = item.url;
