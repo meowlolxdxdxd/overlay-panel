@@ -220,6 +220,7 @@
           <span id="overlay-status-text" style="font-size:13px;">Оверлей не подключён</span>
         </div>
         <button id="mic-button" style="width:auto; padding:6px 12px; margin-left:8px;">🎤 Микрофон</button>
+        <button id="screen-share-button" style="width:auto; padding:6px 12px; margin-left:8px;">🖥️ Демонстрация экрана</button>
         <div style="margin-left:auto; display:flex; gap:8px; align-items:center;"><input type="text" id="overlay-link" readonly style="width:260px; font-size:12px; padding:6px;" /><button id="copy-link-btn" style="width:auto; padding:6px 12px;">📋 Копировать</button></div>
       </div>
       <div class="add-panel">
@@ -234,6 +235,7 @@
               <option value="youtube">YouTube</option>
               <option value="tts">TTS</option>
               <option value="meme">Мем</option>
+              <option value="screenshare">Screen Share</option>
             </select>
           </label>
           <label id="label-new-url">URL файла или YouTube <input type="text" id="new-item-url" placeholder="https://..." /></label>
@@ -340,7 +342,6 @@
                 <button id="pick-meme-chroma-color" style="width:auto; padding:6px 10px;">🎨 Пипетка</button>
               </div>
             </div>
-            <!-- Звук появления для картинок/мемов -->
             <div id="appearance-sound-settings" class="hidden">
               <label>URL звука появления <input type="text" id="selected-appearance-sound" /></label>
               <label class="switch-label">
@@ -350,12 +351,10 @@
             </div>
           </div>
           <div class="editor-right" id="editor-right-panel">
-            <!-- Будут динамически показываться только нужные элементы -->
             <label class="switch-label" id="visibility-row">
               Видимый
               <div class="switch"><input type="checkbox" id="selected-item-visible" /><span class="slider"></span></div>
             </label>
-            <!-- Числовые поля убраны -->
           </div>
         </div>
         <div class="editor-footer">
@@ -523,6 +522,7 @@
         chromaSwatch: $("chroma-swatch"),
         memeChromaSwatch: $("meme-chroma-swatch"),
         micButton: $("mic-button"),
+        screenShareButton: $("screen-share-button"),
         editorRightPanel: $("editor-right-panel"),
         visibilityRow: $("visibility-row"),
       };
@@ -615,11 +615,10 @@
         }
         try {
           micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          // создаём невидимый аудиоэлемент в оверлее
           const audioEl = document.createElement('audio');
           audioEl.srcObject = micStream;
           audioEl.autoplay = true;
-          audioEl.muted = true; // чтобы не было эха, громкость регулируется в OBS
+          audioEl.muted = true;
           audioEl.volume = 1;
           audioEl.id = 'mic-audio';
           document.body.appendChild(audioEl);
@@ -629,6 +628,51 @@
         }
       }
       on(E.micButton, 'click', toggleMic);
+
+      // ============ SCREEN SHARE ============
+      let screenStream = null;
+      async function toggleScreenShare() {
+        if (screenStream) {
+          screenStream.getTracks().forEach(t => t.stop());
+          screenStream = null;
+          E.screenShareButton.textContent = '🖥️ Демонстрация экрана';
+          // убираем элемент screenshare из комнаты (если был)
+          const allItems = items || {};
+          for (const [id, item] of Object.entries(allItems)) {
+            if (item?.type === 'screenshare') {
+              await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
+            }
+          }
+          return;
+        }
+        try {
+          screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+          const track = screenStream.getVideoTracks()[0];
+          if (!track) throw new Error('No video track');
+
+          // Создаём элемент screenshare в Firebase
+          const item = createDefaultItem('screenshare', {
+            title: 'Screen Share',
+            visible: true,
+            size: { width: 1280, height: 720 }
+          });
+          const newRef = await push(itemsRef, item);
+          const id = newRef.key;
+
+          // При остановке шаринга пользователем – удаляем элемент
+          track.addEventListener('ended', () => {
+            remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`)).catch(() => {});
+            screenStream = null;
+            E.screenShareButton.textContent = '🖥️ Демонстрация экрана';
+          });
+
+          E.screenShareButton.textContent = '🖥️ Стоп демонстрация';
+          showNotification('✅ Демонстрация экрана добавлена в оверлей');
+        } catch (e) {
+          showNotification('❌ Не удалось захватить экран: ' + e.message);
+        }
+      }
+      on(E.screenShareButton, 'click', toggleScreenShare);
 
       // ============ ГОЛОСА ============
       function extractVoiceFromUrl(rawUrl) {
@@ -704,14 +748,20 @@
       function triggerMeme(id) {
         if (!items[id] || items[id].type !== 'meme') return;
         update(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`), { visible: true, playing: true });
-        // проигрываем звук появления, если есть
         const item = items[id];
         if (item.appearanceSound) {
           const audio = new Audio(item.appearanceSound);
-          audio.volume = item.appearanceSoundObs ? 1 : 0; // громкость 1 для OBS, 0 для панели (управляется через OBS)
+          audio.volume = item.appearanceSoundObs ? 1 : 0;
           audio.play().catch(() => {});
-          if (!item.appearanceSoundObs) {
-            // если только для панели, отправляем аудио в OBS? упростим: просто играем локально
+          if (item.appearanceSoundObs) {
+            const obsAudio = document.createElement('audio');
+            obsAudio.src = item.appearanceSound;
+            obsAudio.autoplay = true;
+            obsAudio.muted = false;
+            obsAudio.volume = 1;
+            obsAudio.style.display = 'none';
+            document.body.appendChild(obsAudio);
+            obsAudio.addEventListener('ended', () => obsAudio.remove());
           }
         }
       }
@@ -755,6 +805,7 @@
           else if (type === 'audio' || type === 'tts') title = payload.fileName || `Аудио ${urlCounter}`;
           else if (type === 'text') title = payload.text ? payload.text.split(' ').slice(0, 3).join(' ') + '…' : 'Текст';
           else if (type === 'meme') title = 'Мем ' + urlCounter;
+          else if (type === 'screenshare') title = 'Screen Share';
           else title = type.charAt(0).toUpperCase() + type.slice(1);
         }
         return {
@@ -794,6 +845,10 @@
         const file = E.fields.file?.files[0] || null;
 
         if (type === 'tts') { await requestTTS(); return; }
+        if (type === 'screenshare') {
+          await toggleScreenShare();
+          return;
+        }
         if (type === 'meme') {
           const files = E.fields.file?.files;
           let memeVideo = '', memeImage = '', memeAudio = '';
@@ -922,8 +977,7 @@
         if (E.labelNewMemeHotkey) E.labelNewMemeHotkey.classList.toggle('hidden', !isMeme);
       }
       on(E.fields.type, 'change', handleNewTypeChange);
-
-      // ============ ГОРЯЧИЕ КЛАВИШИ J+C, O+C ============
+            // ============ ГОРЯЧИЕ КЛАВИШИ J+C, O+C ============
       let jPressed = false, cPressed = false, oPressed = false;
       document.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
@@ -1064,7 +1118,8 @@
         try { await navigator.clipboard.writeText(E.overlayLink.value); showNotification('✅ Ссылка скопирована'); }
         catch(e) { alert('Скопируйте вручную: ' + E.overlayLink.value); }
       });
-            // ================== ХОЛСТ ==================
+
+      // ================== ХОЛСТ ==================
       function updateSelectionHandles() {
         document.querySelectorAll('.canvas-item .resize-handle, .canvas-item .rotate-handle').forEach(h => h.remove());
         document.querySelectorAll('.canvas-item.selected').forEach(el => el.classList.remove('selected'));
@@ -1100,7 +1155,16 @@
         el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
         if (!item.visible) el.classList.add('invisible');
 
-        // Для аудио и TTS показываем только иконку
+        // Screenshare показываем иконкой (в оверлее будет видео)
+        if (item.type === 'screenshare') {
+          const placeholder = document.createElement('div');
+          placeholder.className = 'canvas-placeholder';
+          placeholder.innerHTML = '🖥️';
+          el.appendChild(placeholder);
+          el.addEventListener('pointerdown', canvasPointerDown);
+          return el;
+        }
+
         if (item.type === 'audio' || item.type === 'tts') {
           const placeholder = document.createElement('div');
           placeholder.className = 'canvas-placeholder';
@@ -1110,7 +1174,6 @@
           return el;
         }
 
-        // Для видео, изображений, мемов показываем превью (для видео без звука)
         const previewUrl = item.type === 'meme'
           ? (item.memeVideo || item.memeImage)
           : (item.type === 'image' || item.type === 'video' ? item.url : null);
@@ -1123,7 +1186,7 @@
           inner.style.height = '100%';
           inner.style.objectFit = 'fill';
           if (tag === 'video') {
-            inner.muted = true;      // без звука на холсте
+            inner.muted = true;
             inner.loop = true;
             inner.playsInline = true;
             inner.autoplay = false;
@@ -1137,7 +1200,6 @@
           };
           el.appendChild(inner);
         } else {
-          // Для YouTube или текста показываем иконку
           const placeholder = document.createElement('div');
           placeholder.className = 'canvas-placeholder';
           if (item.type === 'youtube') placeholder.innerHTML = '📺';
@@ -1169,8 +1231,9 @@
             el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
             el.style.display = 'flex';
             el.classList.toggle('invisible', !item.visible);
-            // Обновляем превью для видео/изображений, но не трогаем аудио
-            if (item.type !== 'audio' && item.type !== 'tts') {
+            if (item.type === 'screenshare' || item.type === 'audio' || item.type === 'tts' || item.type === 'youtube' || item.type === 'text') {
+              // только обновляем видимость
+            } else {
               const inner = el.querySelector('img, video');
               const previewUrl = item.type === 'meme'
                 ? (item.memeVideo || item.memeImage)
@@ -1397,9 +1460,8 @@
       function playAppearanceSound(item) {
         if (!item.appearanceSound) return;
         const audio = new Audio(item.appearanceSound);
-        audio.volume = item.appearanceSoundObs ? 1 : 0; // громкость 1 для OBS, 0 для панели (управление через OBS)
+        audio.volume = item.appearanceSoundObs ? 1 : 0;
         audio.play().catch(() => {});
-        // Если нужно отправить звук именно в OBS, можно создать скрытый Audio элемент и управлять muted
         if (item.appearanceSoundObs) {
           const obsAudio = document.createElement('audio');
           obsAudio.src = item.appearanceSound;
@@ -1419,7 +1481,6 @@
         const item = items[id];
         if (!item) return;
 
-        // Скрываем все секции
         E.textSettings.classList.add('hidden');
         E.mediaSettings.classList.add('hidden');
         E.chromaSettings.classList.add('hidden');
@@ -1429,10 +1490,8 @@
         E.audioObsBox.classList.add('hidden');
         if (E.mediaPreview) E.mediaPreview.innerHTML = '';
 
-        // Скрываем панель видимости по умолчанию
         if (E.visibilityRow) E.visibilityRow.style.display = 'none';
 
-        // Для аудио показываем только плееры, без видимости и координат
         if (item.type === 'audio' || item.type === 'tts') {
           E.mediaSettings.classList.remove('hidden');
           E.audioPreviewBox.classList.remove('hidden');
@@ -1442,9 +1501,11 @@
           E.audioObs.load(); E.audioPreview.load();
           setupObsAudioListeners(id);
           if (item.playing) E.audioObs.play().catch(() => {});
-          // видимость и координаты не показываем
+        } else if (item.type === 'screenshare') {
+          if (E.visibilityRow) E.visibilityRow.style.display = '';
+          if (E.fields.selectedVisible) E.fields.selectedVisible.checked = item.visible !== false;
+          // минимум полей
         } else {
-          // Для остальных типов показываем видимость
           if (E.visibilityRow) E.visibilityRow.style.display = '';
           if (E.fields.selectedVisible) E.fields.selectedVisible.checked = item.visible !== false;
 
@@ -1464,7 +1525,6 @@
             if (item.type === 'video' && E.mediaPreview) {
               E.mediaPreview.innerHTML = `<video src="${item.url}" controls style="width:100%; max-height:200px;"></video>`;
             }
-            // Звук появления
             E.appearanceSoundSettings.classList.remove('hidden');
             if (E.fields.selectedAppearanceSound) E.fields.selectedAppearanceSound.value = item.appearanceSound || '';
             if (E.fields.selectedAppearanceSoundObs) E.fields.selectedAppearanceSoundObs.checked = item.appearanceSoundObs === true;
@@ -1476,7 +1536,6 @@
             if (E.fields.selectedMemeHotkey) E.fields.selectedMemeHotkey.value = item.hotkey || '';
             if (E.fields.selectedMemeChromaColor) E.fields.selectedMemeChromaColor.value = item.chromaColor || '#00ff00';
             if (E.fields.selectedMemeChromaEnabled) E.fields.selectedMemeChromaEnabled.checked = item.chromaEnabled === true;
-            // Звук появления
             E.appearanceSoundSettings.classList.remove('hidden');
             if (E.fields.selectedAppearanceSound) E.fields.selectedAppearanceSound.value = item.appearanceSound || '';
             if (E.fields.selectedAppearanceSoundObs) E.fields.selectedAppearanceSoundObs.checked = item.appearanceSoundObs === true;
@@ -1529,7 +1588,7 @@
           upd.appearanceSound = E.fields.selectedAppearanceSound?.value?.trim() || null;
           upd.appearanceSoundObs = E.fields.selectedAppearanceSoundObs?.checked || false;
         }
-        // Числовые поля (позиция, размер, поворот) не редактируются, поэтому не включаем их в upd
+        // Для screenshare сохраняем только visible
         await update(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}`), upd);
         showNotification('✅ Изменения сохранены');
       }
@@ -1537,6 +1596,13 @@
       async function handleDeleteItem() {
         if (!selectedItemId) return;
         const item = items[selectedItemId];
+        if (item?.type === 'screenshare') {
+          if (screenStream) {
+            screenStream.getTracks().forEach(t => t.stop());
+            screenStream = null;
+            E.screenShareButton.textContent = '🖥️ Демонстрация экрана';
+          }
+        }
         if (item && item.supabasePath) await deleteFileFromSupabase(item.supabasePath);
         await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}`));
         closeEditor();
@@ -1583,8 +1649,9 @@
         E.stageElement.innerHTML = "";
         Object.entries(items).forEach(([id, item]) => {
           if (!item) return;
-          if (!item.visible && item.type !== 'audio' && item.type !== 'tts' && item.type !== 'meme') return;
-          if (item.type === 'meme' && !item.visible) return;
+          if (!item.visible && item.type !== 'audio' && item.type !== 'tts' && item.type !== 'meme' && item.type !== 'screenshare') return;
+          if ((item.type === 'meme' || item.type === 'screenshare') && !item.visible) return;
+
           const el = document.createElement("div");
           el.className = "overlay-item";
           el.dataset.id = id;
@@ -1597,6 +1664,7 @@
           if ((item.type === 'audio' || item.type === 'tts') && !item.visible) {
             el.style.opacity = '0'; el.style.pointerEvents = 'none'; el.style.width = '1px'; el.style.height = '1px';
           }
+
           let inner;
           if (item.type === 'image') {
             inner = document.createElement('img');
@@ -1652,6 +1720,17 @@
                 if (item.playing) audioEl.play().catch(() => {});
               }
             }
+          } else if (item.type === 'screenshare') {
+            inner = document.createElement('video');
+            inner.style.width = '100%'; inner.style.height = '100%';
+            inner.autoplay = true;
+            inner.muted = true;
+            inner.loop = false;
+            if (screenStream) {
+              inner.srcObject = screenStream;
+              inner.play().catch(() => {});
+            }
+            el.appendChild(inner);
           } else if (item.type === 'youtube') {
             inner = document.createElement('iframe');
             inner.src = item.url;
@@ -1682,16 +1761,20 @@
           row.className = "item-row";
 
           let previewHtml = '';
-          const previewUrl = item.type === 'meme' ? (item.memeVideo || item.memeImage || item.url) : item.url;
-          if (item.type === 'image' || item.type === 'video' || item.type === 'meme') {
-            previewHtml = `<img class="item-thumb" src="${previewUrl}" onerror="this.style.display='none'">`;
-          } else if (item.type === 'text') {
-            const words = (item.text || '').split(' ').slice(0, 3).join(' ');
-            previewHtml = `<span style="width:48px; text-align:center;">${words || '…'}</span>`;
-          } else if (item.type === 'audio' || item.type === 'tts') {
-            previewHtml = `<span style="width:48px; text-align:center;">🎵</span>`;
+          if (item.type === 'screenshare') {
+            previewHtml = `<span style="width:48px; text-align:center;">🖥️</span>`;
           } else {
-            previewHtml = `<span style="width:48px; text-align:center;">📺</span>`;
+            const previewUrl = item.type === 'meme' ? (item.memeVideo || item.memeImage || item.url) : item.url;
+            if (item.type === 'image' || item.type === 'video' || item.type === 'meme') {
+              previewHtml = `<img class="item-thumb" src="${previewUrl}" onerror="this.style.display='none'">`;
+            } else if (item.type === 'text') {
+              const words = (item.text || '').split(' ').slice(0, 3).join(' ');
+              previewHtml = `<span style="width:48px; text-align:center;">${words || '…'}</span>`;
+            } else if (item.type === 'audio' || item.type === 'tts') {
+              previewHtml = `<span style="width:48px; text-align:center;">🎵</span>`;
+            } else {
+              previewHtml = `<span style="width:48px; text-align:center;">📺</span>`;
+            }
           }
 
           row.innerHTML = `
@@ -1704,6 +1787,11 @@
 
           row.querySelector('.edit-item').onclick = () => selectItem(id);
           row.querySelector('.delete-item').onclick = async () => {
+            if (item.type === 'screenshare' && screenStream) {
+              screenStream.getTracks().forEach(t => t.stop());
+              screenStream = null;
+              E.screenShareButton.textContent = '🖥️ Демонстрация экрана';
+            }
             if (item && item.supabasePath) await deleteFileFromSupabase(item.supabasePath);
             await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
             if (selectedItemId === id) closeEditor();
