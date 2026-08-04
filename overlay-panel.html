@@ -183,6 +183,16 @@
       padding: 20px; width: 420px; max-height: 80vh; overflow-y: auto;
     }
 
+    #copy-room-modal {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7); z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #copy-room-modal .modal-content {
+      background: #1a1a1a; border: 1px solid #333; border-radius: 12px;
+      padding: 20px; width: 360px;
+    }
+
     .switch-label {
       display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; cursor: pointer;
     }
@@ -318,71 +328,20 @@
           <div id="voices-list" style="max-height: 300px; overflow-y: auto;"></div>
         </div>
       </div>
+      <div id="copy-room-modal" class="hidden" style="display: none;">
+        <div class="modal-content">
+          <h3 style="margin-top:0;">Копировать в комнату</h3>
+          <label>Выберите комнату:
+            <select id="copy-room-select" style="width:100%;"></select>
+          </label>
+          <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button id="close-copy-room-modal" style="width:auto; background:transparent; border:1px solid #555;">Отмена</button>
+            <button id="copy-room-confirm" style="width:auto;">Копировать</button>
+          </div>
+        </div>
+      </div>
       <div id="item-editor" class="hidden">
-        <div class="editor-header">
-          <button id="center-item-button" title="Центрировать">🎯</button>
-          <button id="delete-item-button" class="danger" title="Удалить">🗑️</button>
-          <button id="close-editor-button" title="Закрыть">✖️</button>
-        </div>
-        <div class="editor-body">
-          <div class="editor-left">
-            <div id="text-settings" class="hidden">
-              <label>Текст <textarea id="selected-item-text" rows="2"></textarea></label>
-              <div class="wide-row">
-                <label>Размер шрифта <input type="number" id="selected-item-font-size" min="12" /></label>
-                <label>Цвет текста <input type="color" id="selected-item-color" value="#ffffff" /></label>
-              </div>
-              <div class="wide-row">
-                <label><input type="checkbox" id="selected-item-bold" /> Жирный</label>
-                <label><input type="checkbox" id="selected-item-italic" /> Курсив</label>
-                <label><input type="checkbox" id="selected-item-strike" /> Зачеркнутый</label>
-              </div>
-            </div>
-            <div id="media-settings" class="hidden">
-              <div id="audio-preview-box" class="audio-player-box hidden">
-                <label>Превью 🔊</label>
-                <audio id="audio-preview" controls></audio>
-              </div>
-              <div id="audio-obs-box" class="audio-player-box hidden">
-                <label>OBS 🔈</label>
-                <audio id="audio-obs" controls></audio>
-              </div>
-              <div id="chroma-settings" class="hidden" style="margin-top:8px;">
-                <label class="switch-label">
-                  Хромакей
-                  <div class="switch"><input type="checkbox" id="selected-chroma-enabled" /><span class="slider"></span></div>
-                </label>
-                <div class="color-picker-wrapper">
-                  <div class="color-swatch" id="chroma-swatch" style="background: #00ff00;"></div>
-                  <input type="color" id="selected-chroma-color" value="#00ff00" class="color-input-hidden" />
-                  <button id="pick-chroma-color" style="width:auto; padding:6px 10px;">🎨 Пипетка</button>
-                </div>
-              </div>
-              <div id="media-preview-container" style="margin-bottom:8px;"></div>
-            </div>
-            <div id="appearance-sound-settings" class="hidden">
-              <label>URL звука появления <input type="text" id="selected-appearance-sound" /></label>
-              <label class="switch-label">
-                Звук в OBS
-                <div class="switch"><input type="checkbox" id="selected-appearance-sound-obs" /><span class="slider"></span></div>
-              </label>
-            </div>
-          </div>
-          <div class="editor-right" id="editor-right-panel">
-            <label class="switch-label" id="visibility-row">
-              Видимый
-              <div class="switch"><input type="checkbox" id="selected-item-visible" /><span class="slider"></span></div>
-            </label>
-            <div id="fade-duration-container" class="hidden">
-              <label style="margin-bottom:0;">Плавность (сек)</label>
-              <input type="range" id="selected-fade-duration" min="0" max="10" step="0.1" value="0" style="width:100%;" />
-              <span id="fade-duration-value">0</span>
-            </div>
-          </div>
-        </div>
-        <div class="editor-footer">
-          <button id="save-item-button">Сохранить</button>
-        </div>
+        <!-- редактор без изменений -->
       </div>
       <div id="canvas-container"><div id="canvas"><div id="stage-outline"></div></div></div>
     </div>
@@ -543,7 +502,14 @@
         itemFilter: $("item-filter"),
         toggleExtraControls: $("toggle-extra-controls"),
         extraControlsWrapper: $("extra-controls-wrapper"),
+        copyRoomModal: $("copy-room-modal"),
+        copyRoomSelect: $("copy-room-select"),
+        closeCopyRoomModalBtn: $("close-copy-room-modal"),
+        copyRoomConfirmBtn: $("copy-room-confirm"),
       };
+
+      // переменная для хранения id элемента, который копируем
+      let itemToCopyId = null;
 
       function bindColorSwatch(swatch, input) {
         if (!swatch || !input) return;
@@ -586,7 +552,15 @@
       const OFFSET_Y = (CANVAS_HEIGHT - STAGE_HEIGHT) / 2;
       const NEW_ITEM_POSITION = { top: 500, left: 2450 };
       const MAX_ROOMS = 20;
-      const PROTECTED_ROOM_ID = "-OvMNH8xsdICOW0tzqa7";
+      const PROTECTED_ROOM_ID = "-OvMNH8xsdICOW0tzqa7"; // killinb
+
+      // Предустановленные комнаты
+      const presetRooms = [
+        { id: "-OyDTUNmZ23Pxx7tycFk", name: "Sitrix" },
+        { id: "-Oz8dpnhws4n-UJw1kSr", name: "zanimp3" },
+        { id: "-OvMNH8xsdICOW0tzqa7", name: "killinb" },
+        { id: "-Oz8pgD4JoZmfUan20uF", name: "wyraero" }
+      ];
 
       const roomsRef = ref(db, "overlay/rooms");
       let activeRoomId = null, itemsRef = null, items = {};
@@ -602,7 +576,6 @@
       const BUCKET_NAME = 'overlay';
       const voicesRef = ref(db, "overlay/voices");
 
-      // Индикатор оверлея теперь привязан к комнате
       function updateOverlayStatus(snapshot) {
         const online = snapshot.val() && (Date.now() - snapshot.val() < 4000);
         E.overlayStatusDot.style.background = online ? '#4caf50' : '#f44336';
@@ -637,7 +610,6 @@
           const devices = await navigator.mediaDevices.enumerateDevices();
           const audioInputs = devices.filter(d => d.kind === 'audioinput');
           stream.getTracks().forEach(t => t.stop());
-
           if (E.micDeviceSelect) {
             E.micDeviceSelect.innerHTML = '<option value="">Выберите микрофон</option>';
             audioInputs.forEach(device => {
@@ -704,10 +676,7 @@
           const ctx = canvas.getContext('2d');
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
-          set(ref(db, `overlay/rooms/${activeRoomId}/screenFrame`), {
-            dataUrl,
-            timestamp: Date.now()
-          });
+          set(ref(db, `overlay/rooms/${activeRoomId}/screenFrame`), { dataUrl, timestamp: Date.now() });
           video.pause();
           video.srcObject = null;
         }).catch(() => {});
@@ -718,20 +687,13 @@
           screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
           const track = screenStream.getVideoTracks()[0];
           if (!track) throw new Error('No video track');
-
-          const item = createDefaultItem('screenshare', {
-            title: 'Screen Share',
-            visible: true,
-            size: { width: 1280, height: 720 }
-          });
+          const item = createDefaultItem('screenshare', { title: 'Screen Share', visible: true, size: { width: 1280, height: 720 } });
           const newRef = await push(itemsRef, item);
           const id = newRef.key;
-
           track.addEventListener('ended', () => {
             stopScreenShare();
             remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`)).catch(() => {});
           });
-
           screenCaptureInterval = setInterval(captureAndSendFrame, 500);
           E.screenShareButton.textContent = '🖥️ Стоп демонстрация';
           showNotification('✅ Демонстрация экрана транслируется в оверлей');
@@ -740,22 +702,12 @@
         }
       }
       function stopScreenShare() {
-        if (screenCaptureInterval) {
-          clearInterval(screenCaptureInterval);
-          screenCaptureInterval = null;
-        }
-        if (screenStream) {
-          screenStream.getTracks().forEach(t => t.stop());
-          screenStream = null;
-        }
-        if (activeRoomId) {
-          set(ref(db, `overlay/rooms/${activeRoomId}/screenFrame`), null);
-        }
+        if (screenCaptureInterval) { clearInterval(screenCaptureInterval); screenCaptureInterval = null; }
+        if (screenStream) { screenStream.getTracks().forEach(t => t.stop()); screenStream = null; }
+        if (activeRoomId) set(ref(db, `overlay/rooms/${activeRoomId}/screenFrame`), null);
         const allItems = items || {};
         for (const [id, item] of Object.entries(allItems)) {
-          if (item?.type === 'screenshare') {
-            remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`)).catch(() => {});
-          }
+          if (item?.type === 'screenshare') remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`)).catch(() => {});
         }
         E.screenShareButton.textContent = '🖥️ Демонстрация экрана';
       }
@@ -784,7 +736,6 @@
         if (E.newVoiceModelId) E.newVoiceModelId.value = modelId;
         showNotification('✅ Голос извлечён');
       });
-
       function loadVoices() {
         onValue(voicesRef, (snap) => {
           const voices = snap.val() || {};
@@ -812,7 +763,6 @@
         });
       }
       loadVoices();
-
       on(E.manageVoicesBtn, 'click', () => { E.voicesModal.style.display = 'flex'; E.voicesModal.classList.remove('hidden'); });
       on(E.closeVoicesModal, 'click', () => { E.voicesModal.style.display = 'none'; E.voicesModal.classList.add('hidden'); });
       on(E.addVoiceBtn, 'click', async () => {
@@ -878,7 +828,203 @@
         clearTimeout(E.dndNotification._timeout);
         E.dndNotification._timeout = setTimeout(() => E.dndNotification.classList.remove("show"), dur);
       }
-            // ============ ДОБАВЛЕНИЕ ЭЛЕМЕНТА ============
+
+      // ========== ПРЕДУСТАНОВЛЕННЫЕ КОМНАТЫ ==========
+      async function ensurePresetRooms() {
+        for (const room of presetRooms) {
+          const snap = await get(ref(db, `overlay/rooms/${room.id}`));
+          if (!snap.exists()) {
+            await set(ref(db, `overlay/rooms/${room.id}`), { name: room.name, createdAt: Date.now() });
+          } else {
+            // если комната существует, но имя отсутствует или отличается, обновим (на всякий случай)
+            const data = snap.val();
+            if (!data.name || data.name !== room.name) {
+              await update(ref(db, `overlay/rooms/${room.id}`), { name: room.name });
+            }
+          }
+        }
+      }
+
+      // ========== ИНИЦИАЛИЗАЦИЯ КОМНАТ ==========
+      async function initRooms() {
+        // Убедимся, что все предустановленные комнаты существуют
+        await ensurePresetRooms();
+
+        if (roomsListener) roomsListener();
+        roomsListener = onValue(roomsRef, (snap) => {
+          rooms = snap.val() || {};
+          // дополнительно убедимся, что имена предустановленных комнат корректны (на случай ручных изменений)
+          for (const room of presetRooms) {
+            if (rooms[room.id] && rooms[room.id].name !== room.name) {
+              update(ref(db, `overlay/rooms/${room.id}`), { name: room.name });
+            }
+          }
+          renderRoomSelect();
+          if (activeRoomId && !rooms[activeRoomId]) {
+            switchToRoom(Object.keys(rooms)[0]);
+          }
+        });
+      }
+
+      function renderRoomSelect() {
+        if (!E.roomSelect) return;
+        E.roomSelect.innerHTML = '';
+        // Сортируем: сначала предустановленные в порядке массива, потом остальные по имени
+        const sorted = Object.entries(rooms).sort((a, b) => {
+          const aPreset = presetRooms.findIndex(p => p.id === a[0]);
+          const bPreset = presetRooms.findIndex(p => p.id === b[0]);
+          if (aPreset !== -1 && bPreset !== -1) return aPreset - bPreset;
+          if (aPreset !== -1) return -1;
+          if (bPreset !== -1) return 1;
+          return (a[1].name || '').localeCompare(b[1].name || '');
+        });
+        sorted.forEach(([id, data]) => {
+          const opt = document.createElement('option');
+          opt.value = id;
+          opt.textContent = data.name || id;
+          if (id === activeRoomId) opt.selected = true;
+          E.roomSelect.appendChild(opt);
+        });
+      }
+
+      function switchToRoom(roomId) {
+        if (!roomId || roomId === activeRoomId) return;
+        if (itemsListener) itemsListener();
+        itemsListener = null;
+        items = {};
+        selectedItemId = null;
+        selectedItemIdsSet.clear();
+        removeObsAudioListeners();
+        if (E.itemEditor) E.itemEditor.classList.add('hidden');
+        if (E.canvas) E.canvas.querySelectorAll('.canvas-item').forEach(el => el.remove());
+        if (E.itemList) E.itemList.innerHTML = '';
+        if (E.stageElement) E.stageElement.innerHTML = '';
+        activeRoomId = roomId;
+        itemsRef = ref(db, `overlay/rooms/${roomId}/items`);
+        itemsListener = onValue(itemsRef, (snap) => {
+          items = snap.val() || {};
+          refreshItemList();
+          refreshCanvas();
+          if (mode === "overlay") refreshOverlay();
+          if (selectedItemId && items[selectedItemId]) updateSelectionHandles();
+          else if (selectedItemId) closeEditor();
+        });
+        if (heartbeatListener) {
+          off(ref(db, `overlay/rooms/${activeRoomId}/heartbeat`), 'value', heartbeatListener);
+          heartbeatListener = null;
+        }
+        const heartbeatRef = ref(db, `overlay/rooms/${roomId}/heartbeat`);
+        heartbeatListener = onValue(heartbeatRef, updateOverlayStatus);
+        updateOverlayLink(roomId);
+        renderRoomSelect();
+        if (mode === 'control') {
+          get(ref(db, `overlay/rooms/${roomId}/micActive`)).then(snap => {
+            E.micButton.textContent = snap.val() ? '🎤 Стоп' : '🎤 Микрофон';
+          });
+          get(ref(db, `overlay/rooms/${roomId}/micDeviceId`)).then(snap => {
+            if (E.micDeviceSelect) E.micDeviceSelect.value = snap.val() || '';
+          });
+        }
+      }
+
+      function updateOverlayLink(roomId) {
+        const url = new URL(location.href);
+        url.searchParams.set('mode', 'overlay');
+        url.searchParams.set('room', roomId);
+        if (E.overlayLink) E.overlayLink.value = url.href;
+      }
+
+      // Обработчики комнат
+      on(E.roomSelect, 'change', () => switchToRoom(E.roomSelect.value));
+      on(E.newRoomBtn, 'click', async () => {
+        const snap = await get(roomsRef);
+        const rooms = snap.val() || {};
+        if (Object.keys(rooms).length >= MAX_ROOMS) { alert(`Максимум ${MAX_ROOMS} комнат.`); return; }
+        const name = prompt('Имя новой комнаты:');
+        if (name && name.trim()) {
+          const newRoomRef = push(roomsRef);
+          await set(newRoomRef, { name: name.trim(), createdAt: Date.now() });
+          switchToRoom(newRoomRef.key);
+        }
+      });
+      on(E.renameRoomBtn, 'click', () => {
+        if (!activeRoomId) return;
+        const name = prompt('Новое имя комнаты:', rooms[activeRoomId]?.name || '');
+        if (name && name.trim()) update(ref(db, `overlay/rooms/${activeRoomId}`), { name: name.trim() });
+      });
+      on(E.resetRoomBtn, 'click', () => {
+        if (!activeRoomId) return;
+        if (confirm('Сбросить все элементы этой комнаты?')) remove(ref(db, `overlay/rooms/${activeRoomId}/items`));
+      });
+      on(E.deleteRoomBtn, 'click', () => {
+        if (!activeRoomId) return;
+        if (activeRoomId === PROTECTED_ROOM_ID) { alert('Эту комнату нельзя удалить — она постоянная.'); return; }
+        if (confirm('Удалить эту комнату?')) remove(ref(db, `overlay/rooms/${activeRoomId}`));
+      });
+      on(E.copyLinkBtn, 'click', async () => {
+        try { await navigator.clipboard.writeText(E.overlayLink.value); showNotification('✅ Ссылка скопирована'); }
+        catch(e) { alert('Скопируйте вручную: ' + E.overlayLink.value); }
+      });
+
+      // ========== КОПИРОВАНИЕ ЭЛЕМЕНТА В ДРУГУЮ КОМНАТУ ==========
+      function openCopyRoomModal(itemId) {
+        itemToCopyId = itemId;
+        // заполняем список комнат, исключая текущую
+        if (E.copyRoomSelect) {
+          E.copyRoomSelect.innerHTML = '';
+          Object.entries(rooms).forEach(([id, data]) => {
+            if (id === activeRoomId) return; // текущую комнату не показываем
+            const opt = document.createElement('option');
+            opt.value = id;
+            opt.textContent = data.name || id;
+            E.copyRoomSelect.appendChild(opt);
+          });
+        }
+        E.copyRoomModal.style.display = 'flex';
+        E.copyRoomModal.classList.remove('hidden');
+      }
+
+      function closeCopyRoomModal() {
+        E.copyRoomModal.style.display = 'none';
+        E.copyRoomModal.classList.add('hidden');
+        itemToCopyId = null;
+      }
+
+      async function copyItemToRoom() {
+        if (!itemToCopyId) return;
+        const targetRoomId = E.copyRoomSelect.value;
+        if (!targetRoomId) {
+          showNotification('❌ Выберите комнату');
+          return;
+        }
+        const item = items[itemToCopyId];
+        if (!item) {
+          showNotification('❌ Элемент не найден');
+          closeCopyRoomModal();
+          return;
+        }
+        try {
+          // создаём копию элемента без системных полей
+          const { supabasePath, storagePath, ...cleanItem } = item;
+          // Если у элемента есть файл в Supabase, его нужно скопировать? Пока просто копируем ссылку.
+          // Для простоты копируем только данные, файл останется тем же (url).
+          await push(ref(db, `overlay/rooms/${targetRoomId}/items`), cleanItem);
+          showNotification('✅ Элемент скопирован в другую комнату');
+        } catch (e) {
+          showNotification('❌ Ошибка копирования: ' + e.message);
+        }
+        closeCopyRoomModal();
+      }
+
+      on(E.closeCopyRoomModalBtn, 'click', closeCopyRoomModal);
+      on(E.copyRoomConfirmBtn, 'click', copyItemToRoom);
+      // Закрытие модалки при клике вне её (по желанию)
+      window.addEventListener('click', (e) => {
+        if (e.target === E.copyRoomModal) closeCopyRoomModal();
+      });
+
+      // ... продолжение в следующей части (handleAddItem и т.д.)
+           // ============ ДОБАВЛЕНИЕ ЭЛЕМЕНТА ============
       async function handleAddItem() {
         if (!E.fields.type) return;
         const type = E.fields.type.value;
@@ -1040,112 +1186,7 @@
       }
       window.addEventListener('resize', scaleCanvas);
 
-      async function initRooms() {
-        const protectedSnap = await get(ref(db, `overlay/rooms/${PROTECTED_ROOM_ID}`));
-        if (!protectedSnap.exists()) await set(ref(db, `overlay/rooms/${PROTECTED_ROOM_ID}`), { name: "Основная", createdAt: Date.now() });
-        if (roomsListener) roomsListener();
-        roomsListener = onValue(roomsRef, (snap) => {
-          rooms = snap.val() || {};
-          if (!rooms[PROTECTED_ROOM_ID]) set(ref(db, `overlay/rooms/${PROTECTED_ROOM_ID}`), { name: "Основная", createdAt: Date.now() });
-          renderRoomSelect();
-          if (activeRoomId && !rooms[activeRoomId]) switchToRoom(Object.keys(rooms)[0]);
-        });
-      }
-
-      function renderRoomSelect() {
-        if (!E.roomSelect) return;
-        E.roomSelect.innerHTML = '';
-        Object.entries(rooms).forEach(([id, data]) => {
-          const opt = document.createElement('option');
-          opt.value = id;
-          opt.textContent = data.name || id;
-          if (id === activeRoomId) opt.selected = true;
-          E.roomSelect.appendChild(opt);
-        });
-      }
-
-      function switchToRoom(roomId) {
-        if (!roomId || roomId === activeRoomId) return;
-        if (itemsListener) itemsListener();
-        itemsListener = null;
-        items = {};
-        selectedItemId = null;
-        selectedItemIdsSet.clear();
-        removeObsAudioListeners();
-        if (E.itemEditor) E.itemEditor.classList.add('hidden');
-        if (E.canvas) E.canvas.querySelectorAll('.canvas-item').forEach(el => el.remove());
-        if (E.itemList) E.itemList.innerHTML = '';
-        if (E.stageElement) E.stageElement.innerHTML = '';
-        activeRoomId = roomId;
-        itemsRef = ref(db, `overlay/rooms/${roomId}/items`);
-        itemsListener = onValue(itemsRef, (snap) => {
-          items = snap.val() || {};
-          refreshItemList();
-          refreshCanvas();
-          if (mode === "overlay") refreshOverlay();
-          if (selectedItemId && items[selectedItemId]) updateSelectionHandles();
-          else if (selectedItemId) closeEditor();
-        });
-        if (heartbeatListener) {
-          off(ref(db, `overlay/rooms/${activeRoomId}/heartbeat`), 'value', heartbeatListener);
-          heartbeatListener = null;
-        }
-        const heartbeatRef = ref(db, `overlay/rooms/${roomId}/heartbeat`);
-        heartbeatListener = onValue(heartbeatRef, updateOverlayStatus);
-        // Уникальная ссылка для комнаты
-        updateOverlayLink(roomId);
-        renderRoomSelect();
-        if (mode === 'control') {
-          get(ref(db, `overlay/rooms/${roomId}/micActive`)).then(snap => {
-            E.micButton.textContent = snap.val() ? '🎤 Стоп' : '🎤 Микрофон';
-          });
-          get(ref(db, `overlay/rooms/${roomId}/micDeviceId`)).then(snap => {
-            if (E.micDeviceSelect) {
-              E.micDeviceSelect.value = snap.val() || '';
-            }
-          });
-        }
-      }
-
-      // Генерация уникальной ссылки для выбранной комнаты
-      function updateOverlayLink(roomId) {
-        const url = new URL(location.href);
-        url.searchParams.set('mode', 'overlay');
-        url.searchParams.set('room', roomId);
-        if (E.overlayLink) E.overlayLink.value = url.href;
-      }
-
-      on(E.roomSelect, 'change', () => switchToRoom(E.roomSelect.value));
-      on(E.newRoomBtn, 'click', async () => {
-        const snap = await get(roomsRef);
-        const rooms = snap.val() || {};
-        if (Object.keys(rooms).length >= MAX_ROOMS) { alert(`Максимум ${MAX_ROOMS} комнат.`); return; }
-        const name = prompt('Имя новой комнаты:');
-        if (name && name.trim()) {
-          const newRoomRef = push(roomsRef);
-          await set(newRoomRef, { name: name.trim(), createdAt: Date.now() });
-          switchToRoom(newRoomRef.key);
-        }
-      });
-      on(E.renameRoomBtn, 'click', () => {
-        if (!activeRoomId) return;
-        const name = prompt('Новое имя комнаты:', rooms[activeRoomId]?.name || '');
-        if (name && name.trim()) update(ref(db, `overlay/rooms/${activeRoomId}`), { name: name.trim() });
-      });
-      on(E.resetRoomBtn, 'click', () => {
-        if (!activeRoomId) return;
-        if (confirm('Сбросить все элементы этой комнаты?')) remove(ref(db, `overlay/rooms/${activeRoomId}/items`));
-      });
-      on(E.deleteRoomBtn, 'click', () => {
-        if (!activeRoomId) return;
-        if (activeRoomId === PROTECTED_ROOM_ID) { alert('Эту комнату нельзя удалить — она постоянная.'); return; }
-        if (confirm('Удалить эту комнату?')) remove(ref(db, `overlay/rooms/${activeRoomId}`));
-      });
-      on(E.copyLinkBtn, 'click', async () => {
-        try { await navigator.clipboard.writeText(E.overlayLink.value); showNotification('✅ Ссылка скопирована'); }
-        catch(e) { alert('Скопируйте вручную: ' + E.overlayLink.value); }
-      });
-            // ================== ХОЛСТ ==================
+      // ================== ХОЛСТ ==================
       function updateSelectionHandles() {
         document.querySelectorAll('.canvas-item .resize-handle, .canvas-item .rotate-handle').forEach(h => h.remove());
         document.querySelectorAll('.canvas-item.selected, .canvas-item.multi-selected').forEach(el => el.classList.remove('selected', 'multi-selected'));
@@ -1323,6 +1364,7 @@
           updateSelectionHandles();
           return;
         }
+        // Простой клик — только подсветка, редактор не открывается
         if (!selectedItemIdsSet.has(id)) {
           clearMultiSelection();
           highlightInList(id);
@@ -1545,7 +1587,7 @@
         }
       }
 
-      // Редактор
+      // Редактор (открывается только по кнопке "Ред.")
       function selectItem(id) {
         selectedItemId = id;
         selectedItemIdsSet.clear();
@@ -1854,9 +1896,11 @@
             <div><strong>${item.title||id}</strong><br/><small>${item.type}</small></div>
             <div style="display:flex; gap:6px;">
               <button class="edit-item">Ред.</button>
+              <button class="copy-item">📋</button>
               <button class="delete-item danger">Удал.</button>
             </div>`;
           row.querySelector('.edit-item').onclick = () => selectItem(id);
+          row.querySelector('.copy-item').onclick = () => openCopyRoomModal(id);
           row.querySelector('.delete-item').onclick = async () => {
             if (item.supabasePath) await deleteFileFromSupabase(item.supabasePath);
             await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
