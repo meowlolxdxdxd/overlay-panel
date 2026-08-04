@@ -1,353 +1,4 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8" />
-  <title>OBS Overlay</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" href="assets/obs-panel.ico" type="image/x-icon" />
-  <meta name="referrer" content="no-referrer" />
-  <style>
-    :root {
-      --scrollbar-track: rgba(255, 255, 255, 0.04);
-      --scrollbar-thumb: #9147ff;
-      --scrollbar-width: 6px;
-    }
-    ::-webkit-scrollbar { width: var(--scrollbar-width); height: var(--scrollbar-width); }
-    ::-webkit-scrollbar-track { background: var(--scrollbar-track); border-radius: 3px; }
-    ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #7b33db; }
-    * { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track); }
-
-    body {
-      margin: 0; padding: 0; background: #121212; color: #fff;
-      font-family: Inter, Arial, sans-serif; overflow-y: auto; overflow-x: hidden;
-    }
-
-    #overlay-container { display: none; width: 100vw; height: 100vh; background: transparent; justify-content: center; align-items: center; }
-    #stage {
-      aspect-ratio: 16 / 9; width: 100%; height: 100%;
-      max-width: 100vw; max-height: 100vh; overflow: hidden; background: transparent; position: relative;
-    }
-
-    .overlay-item { position: absolute; touch-action: none; user-select: none; cursor: grab; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; overflow: hidden; }
-    .overlay-item.dragging { cursor: grabbing; }
-    .overlay-item img, .overlay-item iframe, .overlay-item video { width: 100%; height: 100%; object-fit: fill; display: block; border-radius: 10px; pointer-events: none; }
-    .overlay-item.audio-hidden { display: none; }
-    .overlay-item audio { width: 100%; height: 100%; pointer-events: auto; display: block; }
-    .overlay-text { white-space: pre-wrap; word-break: break-word; padding: 0; border-radius: 0; background: transparent; min-width: 0; min-height: 0; box-sizing: border-box; display: inline-block; }
-
-    #mode-picker { display: none; width: 100vw; height: 100vh; background: #0c0c0f; align-items: center; justify-content: center; flex-direction: column; }
-    .picker-card { width: 100%; max-width: 520px; padding: 30px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 18px; text-align: center; }
-    .picker-card h1 { margin-bottom: 12px; font-size: 28px; }
-    .picker-card p { margin-bottom: 24px; color: rgba(255,255,255,0.78); }
-    .picker-card a { display: inline-block; width: calc(100% - 20px); max-width: 240px; margin: 8px 10px; padding: 12px 18px; border-radius: 12px; background: #9147ff; color: #fff; text-decoration: none; transition: transform 0.12s, background 0.12s; }
-    .picker-card a:hover { transform: translateY(-1px); background: #7b33db; }
-
-    #control-panel { display: none; background: #121212; min-height: 100vh; }
-    #control-interface { display: flex; flex-direction: column; }
-
-    .rooms-panel {
-      display: flex; flex-wrap: wrap; gap: 12px; padding: 12px 24px; background: #0f0f12;
-      align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1);
-    }
-    .rooms-panel label { margin: 0 8px 0 0; font-size: 14px; color: #c8c8d0; }
-    .rooms-panel select {
-      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;
-      color: #fff; padding: 6px 30px 6px 10px; font-size: 14px; appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239147ff' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-      background-repeat: no-repeat; background-position: right 10px center;
-    }
-    .room-action-btn {
-      width: auto; padding: 4px 8px; font-size: 13px; background: transparent;
-      border: none; color: #ccc; border-radius: 6px; cursor: pointer;
-    }
-    .room-action-btn:hover { background: rgba(255,255,255,0.1); }
-
-    .add-panel { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.4fr); gap: 20px; padding: 16px 24px; background: #0f0f12; }
-    .card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 18px; }
-    .card h2 { margin-top: 0; margin-bottom: 14px; font-size: 20px; }
-    label { display: block; margin-bottom: 12px; font-size: 14px; color: #c8c8d0; }
-    input, select, textarea, button { width: 100%; font: inherit; border: 1px solid rgba(255,255,255,0.16); border-radius: 10px; background: rgba(255,255,255,0.06); color: #fff; padding: 10px 12px; margin-top: 6px; box-sizing: border-box; }
-    textarea { resize: vertical; min-height: 60px; }
-    button { cursor: pointer; background: #9147ff; border-color: transparent; color: #fff; transition: transform 0.12s, background 0.12s; }
-    button:hover { transform: translateY(-1px); background: #7b33db; }
-    button.danger { background: #e03a3a; }
-    #item-list { max-height: 200px; overflow-y: auto; margin-top: 8px; }
-    .item-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 12px; background: rgba(255,255,255,0.04); margin-bottom: 8px; }
-    .item-row.highlight { background: rgba(145,71,255,0.25); border: 1px solid #9147ff; }
-    .item-row button { width: auto; padding: 6px 10px; font-size: 13px; }
-    .item-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; }
-    .hidden { display: none !important; }
-    .help-text { opacity: 0.72; font-size: 13px; margin-top: 4px; }
-    .wide-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-
-    select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239147ff' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
-    select option { background: #1e1e1e; color: #fff; }
-
-    #item-editor { padding: 8px 24px; background: #0f0f12; border-bottom: 1px solid rgba(255,255,255,0.1); }
-    .editor-header { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 8px; }
-    .editor-header button { width: auto; padding: 4px 8px; font-size: 14px; background: transparent; border: 1px solid rgba(255,255,255,0.2); color: #ccc; border-radius: 6px; cursor: pointer; }
-    .editor-header button:hover { background: rgba(255,255,255,0.1); }
-    .editor-body { display: flex; gap: 20px; margin-top: 6px; }
-    .editor-left { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-    .editor-right { width: 200px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
-    .editor-right label { margin-bottom: 4px; font-size: 12px; }
-    .editor-right input[type="number"] { padding: 4px 6px; font-size: 12px; }
-    .editor-footer { margin-top: 8px; display: flex; gap: 8px; justify-content: flex-end; }
-    .editor-footer button { width: auto; padding: 6px 12px; font-size: 13px; }
-
-    .audio-player-box { background: #fff; border-radius: 8px; padding: 6px; margin-bottom: 8px; color: #000; }
-    .audio-player-box label { color: #000; font-weight: bold; margin-bottom: 4px; display: block; }
-    .audio-player-box audio { width: 100%; height: 36px; display: block; }
-
-    #canvas-container { width: 100%; height: 85vh; min-height: 700px; position: relative; overflow: hidden; background: #0a0a0a; }
-    #canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(var(--canvas-scale, 1)); transform-origin: center center; width: 3840px; height: 2160px; background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%); box-shadow: 0 0 30px rgba(0,0,0,0.5); border-radius: 12px; }
-    #stage-outline { position: absolute; left: 960px; top: 540px; width: 1920px; height: 1080px; border: 2px dashed rgba(145,71,255,0.4); pointer-events: none; }
-
-    .canvas-item { position: absolute; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; overflow: visible; cursor: grab; user-select: none; border: 2px solid transparent; }
-    .canvas-item.selected { border: 2px solid #9147ff; z-index: 10; }
-    .canvas-item.multi-selected { border: 2px dashed #9147ff; }
-    .canvas-item img, .canvas-item video { width: 100%; height: 100%; object-fit: fill; display: block; border-radius: 6px; }
-    .canvas-item .canvas-placeholder {
-      width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
-      background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 24px;
-    }
-    .canvas-item.invisible {
-      opacity: 0.35;
-      border-style: dashed;
-      border-color: #888;
-    }
-
-    .resize-handle { position: absolute; width: 12px; height: 12px; background: #9147ff; border: 2px solid #fff; border-radius: 2px; z-index: 20; pointer-events: auto; }
-    .resize-handle.nw { top: -6px; left: -6px; cursor: nwse-resize; }
-    .resize-handle.ne { top: -6px; right: -6px; cursor: nesw-resize; }
-    .resize-handle.sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
-    .resize-handle.se { bottom: -6px; right: -6px; cursor: nwse-resize; }
-    .resize-handle.n { top: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
-    .resize-handle.s { bottom: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
-    .resize-handle.w { left: -6px; top: 50%; margin-top: -6px; cursor: ew-resize; }
-    .resize-handle.e { right: -6px; top: 50%; margin-top: -6px; cursor: ew-resize; }
-
-    .rotate-handle {
-      position: absolute;
-      top: -60px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 2px;
-      height: 60px;
-      background: #9147ff;
-      cursor: grab;
-      border: none;
-      border-radius: 0;
-      z-index: 30;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      pointer-events: auto;
-    }
-    .rotate-handle::before {
-      content: "";
-      display: block;
-      width: 16px;
-      height: 16px;
-      background: #9147ff;
-      border-radius: 50%;
-      position: absolute;
-      top: -8px;
-      left: 50%;
-      transform: translateX(-50%);
-      border: 2px solid #fff;
-    }
-    .rotate-handle:hover { background: #7b33db; }
-    .rotate-handle:hover::before { background: #7b33db; }
-    .canvas-item.selected .rotate-handle { display: flex; }
-
-    .file-upload-wrapper { position: relative; margin-top: 6px; }
-    .file-upload-trigger { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #9147ff; border-radius: 10px; cursor: pointer; transition: background 0.12s; }
-    .file-upload-trigger:hover { background: #7b33db; }
-    .file-upload-trigger span { font-size: 14px; font-weight: 500; }
-    .file-upload-trigger input[type="file"] { position: absolute; opacity: 0; width: 100%; height: 100%; top: 0; left: 0; cursor: pointer; }
-
-    #dnd-notification { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #9147ff; color: #fff; padding: 12px 24px; border-radius: 12px; font-weight: 500; z-index: 9999; pointer-events: none; opacity: 0; transition: opacity 0.2s; }
-    #dnd-notification.show { opacity: 1; }
-
-    .broken-image { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(255,0,0,0.2); color: #fff; font-size: 14px; border-radius: 6px; }
-
-    #voices-modal {
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.7); z-index: 1000;
-      display: flex; align-items: center; justify-content: center;
-    }
-    #voices-modal .modal-content {
-      background: #1a1a1a; border: 1px solid #333; border-radius: 12px;
-      padding: 20px; width: 420px; max-height: 80vh; overflow-y: auto;
-    }
-
-    #copy-room-modal {
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.7); z-index: 1000;
-      display: flex; align-items: center; justify-content: center;
-    }
-    #copy-room-modal .modal-content {
-      background: #1a1a1a; border: 1px solid #333; border-radius: 12px;
-      padding: 20px; width: 360px;
-    }
-
-    .switch-label {
-      display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; cursor: pointer;
-    }
-    .switch-label .switch {
-      position: relative; display: inline-block; width: 44px; height: 24px; margin-left: 8px;
-    }
-    .switch input { opacity: 0; width: 0; height: 0; }
-    .slider {
-      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-      background-color: #ccc; border-radius: 24px; transition: .3s;
-    }
-    .slider:before {
-      position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
-      background-color: white; border-radius: 50%; transition: .3s;
-    }
-    input:checked + .slider { background-color: #9147ff; }
-    input:checked + .slider:before { transform: translateX(20px); }
-
-    .color-picker-wrapper { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-    .color-swatch {
-      width: 28px; height: 28px; border-radius: 50%; border: 2px solid #555;
-      background: #00ff00; cursor: pointer;
-    }
-    .color-input-hidden { position: absolute; opacity: 0; width: 0; height: 0; }
-
-    .extra-controls-wrapper {
-      max-height: 0; overflow: hidden; transition: max-height 0.3s ease;
-    }
-    .extra-controls-wrapper.open { max-height: 80px; }
-    .icon-btn {
-      width: auto; padding: 6px 10px; font-size: 16px; background: transparent;
-      border: none; color: #ccc; border-radius: 6px; cursor: pointer;
-    }
-    .icon-btn:hover { background: rgba(255,255,255,0.1); }
-  </style>
-</head>
-<body>
-  <div id="overlay-container"><div id="stage"></div></div>
-  <div id="mode-picker"><div class="picker-card"><h1>OBS Overlay</h1><p>Откройте страницу в нужном режиме:</p><a href="?mode=overlay">Режим оверлея</a><a href="?mode=control">Панель управления</a></div></div>
-  <div id="control-panel">
-    <div id="secret-prompt" class="card" style="max-width:420px; margin:40px auto;"><h2>Вход модератора</h2><label><input type="password" id="secret-input" placeholder="Введи ключ" /></label><button type="button" id="login-button">Войти</button><p class="hint">После входа можно управлять оверлеем и редактировать элементы в реальном времени.</p></div>
-    <div id="control-interface" class="hidden">
-      <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 24px; background:#0f0f12;"><h1 style="margin:0; font-size:20px;">OBS Overlay</h1><button id="logout-button" class="danger" style="width:auto; padding:6px 12px;">Выйти</button></div>
-      <div class="rooms-panel">
-        <label>Комната:</label>
-        <select id="room-select" style="width:auto;"></select>
-        <button id="new-room-btn" class="room-action-btn" title="Новая комната">➕</button>
-        <button id="rename-room-btn" class="room-action-btn" title="Переименовать">✏️</button>
-        <button id="reset-room-btn" class="room-action-btn" title="Сбросить элементы">🔄</button>
-        <button id="delete-room-btn" class="room-action-btn" title="Удалить комнату">🗑️</button>
-        <div style="margin-left:12px; display:flex; align-items:center; gap:8px;">
-          <span id="overlay-status-dot" style="width:12px; height:12px; border-radius:50%; background:red; display:inline-block;"></span>
-          <span id="overlay-status-text" style="font-size:13px;">Оверлей не подключён</span>
-        </div>
-        <button id="toggle-extra-controls" class="icon-btn" title="Микрофон и демонстрация">🎤🖥️</button>
-        <div class="extra-controls-wrapper" id="extra-controls-wrapper">
-          <div style="display:flex; gap:8px; align-items:center; padding:4px 0;">
-            <button id="request-mic-permission" style="width:auto; padding:6px 10px; font-size:13px;">🎙️ Разрешить</button>
-            <select id="mic-device-select" style="width:auto; padding:6px; font-size:13px;" disabled>
-              <option value="">Микрофон</option>
-            </select>
-            <button id="mic-button" style="width:auto; padding:6px 12px;">🎤 Микрофон</button>
-            <button id="screen-share-button" style="width:auto; padding:6px 12px;">🖥️ Демонстрация</button>
-          </div>
-        </div>
-        <div style="margin-left:auto; display:flex; gap:8px; align-items:center;"><input type="text" id="overlay-link" readonly style="width:260px; font-size:12px; padding:6px;" /><button id="copy-link-btn" style="width:auto; padding:6px 12px;">📋 Копировать</button></div>
-      </div>
-      <div class="add-panel">
-        <section class="card">
-          <h2>Добавить элемент</h2>
-          <label>Тип элемента
-            <select id="new-item-type">
-              <option value="image">Картинка</option>
-              <option value="video">Видео</option>
-              <option value="audio">Аудио</option>
-              <option value="text">Текст</option>
-              <option value="youtube">YouTube</option>
-              <option value="tts">TTS</option>
-            </select>
-          </label>
-          <label id="label-new-url"><span id="url-label-text">URL файла или YouTube</span> <input type="text" id="new-item-url" placeholder="https://..." /></label>
-          <label id="label-new-text" class="hidden">Текст <textarea id="new-text-content" placeholder="Введи текст"></textarea></label>
-          <label id="label-new-voice" class="hidden">Голос
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <select id="new-item-voice" style="flex: 1;">
-                <option value="">-- Без голоса (alex) --</option>
-              </select>
-              <button type="button" id="manage-voices-btn" style="width: auto; padding: 6px 10px; font-size: 13px;">Управление</button>
-            </div>
-          </label>
-          <label>Файл для загрузки</label>
-          <div class="file-upload-wrapper">
-            <div class="file-upload-trigger"><span>📁 Выбрать файл</span><input type="file" id="new-item-file" accept="image/*,video/*,audio/*" multiple /></div>
-          </div>
-          <button type="button" id="add-item-button">Добавить элемент</button>
-          <p class="help-text" id="upload-status" style="display:none; color:#9147ff; opacity:0.9;"></p>
-        </section>
-        <section class="card">
-          <h2>Элементы оверлея</h2>
-          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-            <label style="margin-bottom:0;">Фильтр:</label>
-            <select id="item-filter" style="width:auto;">
-              <option value="all">Все</option>
-              <option value="image">Изображения</option>
-              <option value="video">Видео</option>
-              <option value="audio">Аудио</option>
-              <option value="text">Текст</option>
-              <option value="youtube">YouTube</option>
-              <option value="tts">TTS</option>
-            </select>
-          </div>
-          <div id="item-list"></div>
-        </section>
-      </div>
-      <div id="voices-modal" class="hidden" style="display: none;">
-        <div class="modal-content">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h3 style="margin: 0;">Управление голосами</h3>
-            <button id="close-voices-modal" style="width: auto; padding: 4px 8px; background: transparent; border: 1px solid #555; color: #fff; border-radius: 6px;">✖️</button>
-          </div>
-          <div style="margin-bottom: 8px;">
-            <label style="font-size: 13px; margin-bottom: 4px;">Вставить ссылку Fish Audio</label>
-            <div style="display: flex; gap: 6px;">
-              <input type="text" id="voice-link-input" placeholder="https://fish.audio/ru/app/text-to-speech/?...modelIds=..." style="flex: 2;" />
-              <button id="extract-voice-link-btn" style="width: auto; padding: 6px 12px; font-size: 13px;">Извлечь</button>
-            </div>
-          </div>
-          <div style="margin-bottom: 12px; display: flex; gap: 6px;">
-            <input type="text" id="new-voice-name" placeholder="Название голоса" style="flex: 1;" />
-            <input type="text" id="new-voice-model-id" placeholder="modelId" style="flex: 2;" />
-            <button id="add-voice-btn" style="width: auto; padding: 6px 12px;">Добавить</button>
-          </div>
-          <div id="voices-list" style="max-height: 300px; overflow-y: auto;"></div>
-        </div>
-      </div>
-      <div id="copy-room-modal" class="hidden" style="display: none;">
-        <div class="modal-content">
-          <h3 style="margin-top:0;">Копировать в комнату</h3>
-          <label>Выберите комнату:
-            <select id="copy-room-select" style="width:100%;"></select>
-          </label>
-          <div style="display:flex; gap:8px; justify-content:flex-end;">
-            <button id="close-copy-room-modal" style="width:auto; background:transparent; border:1px solid #555;">Отмена</button>
-            <button id="copy-room-confirm" style="width:auto;">Копировать</button>
-          </div>
-        </div>
-      </div>
-      <div id="item-editor" class="hidden">
-        <!-- редактор без изменений -->
-      </div>
-      <div id="canvas-container"><div id="canvas"><div id="stage-outline"></div></div></div>
-    </div>
-  </div>
-  <div id="dnd-notification"></div>
-    <script type="module">
+  <script type="module">
     (async () => {
       if (document.readyState === 'loading') await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
 
@@ -383,7 +34,6 @@
       const on = (el, event, handler) => el?.addEventListener(event, handler);
       const off = (el, event, handler) => el?.removeEventListener(event, handler);
 
-      // ========== ХРОМАКЕЙ ==========
       function createChromaFilter(colorHex, id) {
         const existing = document.getElementById('chroma-filter-' + id);
         if (existing) existing.remove();
@@ -508,7 +158,6 @@
         copyRoomConfirmBtn: $("copy-room-confirm"),
       };
 
-      // переменная для хранения id элемента, который копируем
       let itemToCopyId = null;
 
       function bindColorSwatch(swatch, input) {
@@ -552,10 +201,8 @@
       const OFFSET_Y = (CANVAS_HEIGHT - STAGE_HEIGHT) / 2;
       const NEW_ITEM_POSITION = { top: 500, left: 2450 };
       const MAX_ROOMS = 20;
-      const PROTECTED_ROOM_ID = "-OvMNH8xsdICOW0tzqa7"; // killinb
 
-      // Предустановленные комнаты
-      const presetRooms = [
+      const PRESET_ROOMS = [
         { id: "-OyDTUNmZ23Pxx7tycFk", name: "Sitrix" },
         { id: "-Oz8dpnhws4n-UJw1kSr", name: "zanimp3" },
         { id: "-OvMNH8xsdICOW0tzqa7", name: "killinb" },
@@ -582,7 +229,7 @@
         E.overlayStatusText.textContent = online ? 'Оверлей подключён' : 'Оверлей не подключён';
       }
 
-      // Микрофон (без изменений)
+      // Микрофон
       let micStreamInOverlay = null;
       async function startMicInOverlay(deviceId) {
         stopMicInOverlay();
@@ -610,6 +257,7 @@
           const devices = await navigator.mediaDevices.enumerateDevices();
           const audioInputs = devices.filter(d => d.kind === 'audioinput');
           stream.getTracks().forEach(t => t.stop());
+
           if (E.micDeviceSelect) {
             E.micDeviceSelect.innerHTML = '<option value="">Выберите микрофон</option>';
             audioInputs.forEach(device => {
@@ -658,7 +306,7 @@
         }
       }
 
-      // Screen share (без изменений)
+      // Screen share
       let screenStream = null, screenCaptureInterval = null;
       function captureAndSendFrame() {
         if (!screenStream || !activeRoomId) return;
@@ -716,7 +364,7 @@
         screenStream ? stopScreenShare() : startScreenShare();
       });
 
-      // Голоса (без изменений)
+      // Голоса
       function extractVoiceFromUrl(rawUrl) {
         try {
           const u = new URL(rawUrl);
@@ -774,7 +422,7 @@
         showNotification('✅ Голос добавлен');
       });
 
-      // Утилиты (без изменений)
+      // Утилиты
       function getFileType(file) {
         const mime = file.type;
         if (mime.startsWith('image/')) return 'image';
@@ -829,14 +477,23 @@
         E.dndNotification._timeout = setTimeout(() => E.dndNotification.classList.remove("show"), dur);
       }
 
-      // ========== ПРЕДУСТАНОВЛЕННЫЕ КОМНАТЫ ==========
+      // Генерация ссылки
+      function generateOverlayLink(roomId) {
+        const base = window.location.origin + window.location.pathname;
+        return `${base}?mode=overlay&room=${roomId}`;
+      }
+      function updateOverlayLink(roomId) {
+        if (!E.overlayLink) return;
+        E.overlayLink.value = generateOverlayLink(roomId);
+      }
+
+      // Предустановленные комнаты
       async function ensurePresetRooms() {
-        for (const room of presetRooms) {
+        for (const room of PRESET_ROOMS) {
           const snap = await get(ref(db, `overlay/rooms/${room.id}`));
           if (!snap.exists()) {
             await set(ref(db, `overlay/rooms/${room.id}`), { name: room.name, createdAt: Date.now() });
           } else {
-            // если комната существует, но имя отсутствует или отличается, обновим (на всякий случай)
             const data = snap.val();
             if (!data.name || data.name !== room.name) {
               await update(ref(db, `overlay/rooms/${room.id}`), { name: room.name });
@@ -845,16 +502,12 @@
         }
       }
 
-      // ========== ИНИЦИАЛИЗАЦИЯ КОМНАТ ==========
       async function initRooms() {
-        // Убедимся, что все предустановленные комнаты существуют
         await ensurePresetRooms();
-
         if (roomsListener) roomsListener();
         roomsListener = onValue(roomsRef, (snap) => {
           rooms = snap.val() || {};
-          // дополнительно убедимся, что имена предустановленных комнат корректны (на случай ручных изменений)
-          for (const room of presetRooms) {
+          for (const room of PRESET_ROOMS) {
             if (rooms[room.id] && rooms[room.id].name !== room.name) {
               update(ref(db, `overlay/rooms/${room.id}`), { name: room.name });
             }
@@ -869,10 +522,9 @@
       function renderRoomSelect() {
         if (!E.roomSelect) return;
         E.roomSelect.innerHTML = '';
-        // Сортируем: сначала предустановленные в порядке массива, потом остальные по имени
         const sorted = Object.entries(rooms).sort((a, b) => {
-          const aPreset = presetRooms.findIndex(p => p.id === a[0]);
-          const bPreset = presetRooms.findIndex(p => p.id === b[0]);
+          const aPreset = PRESET_ROOMS.findIndex(p => p.id === a[0]);
+          const bPreset = PRESET_ROOMS.findIndex(p => p.id === b[0]);
           if (aPreset !== -1 && bPreset !== -1) return aPreset - bPreset;
           if (aPreset !== -1) return -1;
           if (bPreset !== -1) return 1;
@@ -927,14 +579,6 @@
         }
       }
 
-      function updateOverlayLink(roomId) {
-        const url = new URL(location.href);
-        url.searchParams.set('mode', 'overlay');
-        url.searchParams.set('room', roomId);
-        if (E.overlayLink) E.overlayLink.value = url.href;
-      }
-
-      // Обработчики комнат
       on(E.roomSelect, 'change', () => switchToRoom(E.roomSelect.value));
       on(E.newRoomBtn, 'click', async () => {
         const snap = await get(roomsRef);
@@ -958,22 +602,28 @@
       });
       on(E.deleteRoomBtn, 'click', () => {
         if (!activeRoomId) return;
-        if (activeRoomId === PROTECTED_ROOM_ID) { alert('Эту комнату нельзя удалить — она постоянная.'); return; }
+        if (PRESET_ROOMS.some(r => r.id === activeRoomId)) {
+          alert('Предустановленные комнаты нельзя удалить.');
+          return;
+        }
         if (confirm('Удалить эту комнату?')) remove(ref(db, `overlay/rooms/${activeRoomId}`));
       });
       on(E.copyLinkBtn, 'click', async () => {
-        try { await navigator.clipboard.writeText(E.overlayLink.value); showNotification('✅ Ссылка скопирована'); }
-        catch(e) { alert('Скопируйте вручную: ' + E.overlayLink.value); }
+        try {
+          await navigator.clipboard.writeText(E.overlayLink.value);
+          showNotification('✅ Ссылка скопирована');
+        } catch(e) {
+          alert('Скопируйте вручную: ' + E.overlayLink.value);
+        }
       });
 
-      // ========== КОПИРОВАНИЕ ЭЛЕМЕНТА В ДРУГУЮ КОМНАТУ ==========
+      // Копирование элемента
       function openCopyRoomModal(itemId) {
         itemToCopyId = itemId;
-        // заполняем список комнат, исключая текущую
         if (E.copyRoomSelect) {
           E.copyRoomSelect.innerHTML = '';
           Object.entries(rooms).forEach(([id, data]) => {
-            if (id === activeRoomId) return; // текущую комнату не показываем
+            if (id === activeRoomId) return;
             const opt = document.createElement('option');
             opt.value = id;
             opt.textContent = data.name || id;
@@ -1004,10 +654,7 @@
           return;
         }
         try {
-          // создаём копию элемента без системных полей
           const { supabasePath, storagePath, ...cleanItem } = item;
-          // Если у элемента есть файл в Supabase, его нужно скопировать? Пока просто копируем ссылку.
-          // Для простоты копируем только данные, файл останется тем же (url).
           await push(ref(db, `overlay/rooms/${targetRoomId}/items`), cleanItem);
           showNotification('✅ Элемент скопирован в другую комнату');
         } catch (e) {
@@ -1018,13 +665,11 @@
 
       on(E.closeCopyRoomModalBtn, 'click', closeCopyRoomModal);
       on(E.copyRoomConfirmBtn, 'click', copyItemToRoom);
-      // Закрытие модалки при клике вне её (по желанию)
       window.addEventListener('click', (e) => {
         if (e.target === E.copyRoomModal) closeCopyRoomModal();
       });
 
-      // ... продолжение в следующей части (handleAddItem и т.д.)
-           // ============ ДОБАВЛЕНИЕ ЭЛЕМЕНТА ============
+      // ============ ДОБАВЛЕНИЕ ЭЛЕМЕНТА ============
       async function handleAddItem() {
         if (!E.fields.type) return;
         const type = E.fields.type.value;
@@ -1145,7 +790,7 @@
       on(E.fields.type, 'change', handleNewTypeChange);
       handleNewTypeChange();
 
-      // ============ ГОРЯЧИЕ КЛАВИШИ J+C, O+C ============
+      // ============ ГОРЯЧИЕ КЛАВИШИ ============
       let jPressed = false, cPressed = false, oPressed = false;
       document.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
@@ -1159,10 +804,7 @@
             initRooms().then(() => {
               get(roomsRef).then(snap => {
                 rooms = snap.val() || {};
-                if (!activeRoomId) {
-                  const firstId = Object.keys(rooms)[0];
-                  if (firstId) switchToRoom(firstId);
-                }
+                if (!activeRoomId) switchToRoom(Object.keys(rooms)[0]);
                 scaleCanvas();
                 if (!window._dragDropEnabled) enableDragDrop();
               });
@@ -1211,7 +853,6 @@
             el.appendChild(rotHandle);
           }
         }
-        // Подсветка в списке
         document.querySelectorAll('.item-row').forEach(r => r.classList.remove('highlight'));
         if (selectedItemId) {
           const row = document.querySelector(`.item-row[data-id="${selectedItemId}"]`);
@@ -1245,9 +886,7 @@
             const inner = document.createElement(tag);
             inner.src = previewUrl;
             inner.style.width = '100%'; inner.style.height = '100%'; inner.style.objectFit = 'fill';
-            if (tag === 'video') {
-              inner.muted = true; inner.loop = true; inner.playsInline = true; inner.autoplay = false;
-            }
+            if (tag === 'video') { inner.muted = true; inner.loop = true; inner.playsInline = true; inner.autoplay = false; }
             inner.onerror = () => {
               inner.style.display = 'none';
               const broken = document.createElement('div');
@@ -1364,7 +1003,6 @@
           updateSelectionHandles();
           return;
         }
-        // Простой клик — только подсветка, редактор не открывается
         if (!selectedItemIdsSet.has(id)) {
           clearMultiSelection();
           highlightInList(id);
@@ -1560,10 +1198,7 @@
 
       // Хромакей
       function applyChromaFilter(el, colorHex, id, enabled) {
-        if (!enabled || !colorHex) {
-          el.style.filter = '';
-          return;
-        }
+        if (!enabled || !colorHex) { el.style.filter = ''; return; }
         createChromaFilter(colorHex, id);
         el.style.filter = `url(#chroma-filter-${id})`;
       }
@@ -1587,7 +1222,7 @@
         }
       }
 
-      // Редактор (открывается только по кнопке "Ред.")
+      // Редактор
       function selectItem(id) {
         selectedItemId = id;
         selectedItemIdsSet.clear();
@@ -1953,7 +1588,6 @@
       on(E.logoutButton, 'click', () => { E.secretPrompt.classList.remove('hidden'); E.controlInterface.classList.add('hidden'); });
       on(E.addItemButton, 'click', handleAddItem);
 
-      // Кнопка сворачивания микрофона/демонстрации
       let extraOpen = false;
       on(E.toggleExtraControls, 'click', () => {
         extraOpen = !extraOpen;
