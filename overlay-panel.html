@@ -102,6 +102,7 @@
 
     .canvas-item { position: absolute; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; overflow: visible; cursor: grab; user-select: none; border: 2px solid transparent; }
     .canvas-item.selected { border: 2px solid #9147ff; z-index: 10; }
+    .canvas-item.multi-selected { border: 2px dashed #9147ff; }
     .canvas-item img, .canvas-item video { width: 100%; height: 100%; object-fit: fill; display: block; border-radius: 6px; }
     .canvas-item .canvas-placeholder {
       width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
@@ -219,14 +220,15 @@
           <span id="overlay-status-dot" style="width:12px; height:12px; border-radius:50%; background:red; display:inline-block;"></span>
           <span id="overlay-status-text" style="font-size:13px;">Оверлей не подключён</span>
         </div>
-        <div style="display:flex; align-items:center; gap:6px; margin-left:8px;">
+        <button id="toggle-extra-controls" style="width:auto; padding:4px 10px; font-size:13px; margin-left:8px;">🔽 Скрыть микрофон/демонстрацию</button>
+        <div id="extra-controls" style="display:flex; align-items:center; gap:8px;">
           <button id="request-mic-permission" style="width:auto; padding:6px 10px; font-size:13px;">🎙️ Разрешить микрофон</button>
           <select id="mic-device-select" style="width:auto; padding:6px; font-size:13px;" disabled>
             <option value="">Выберите микрофон</option>
           </select>
           <button id="mic-button" style="width:auto; padding:6px 12px;">🎤 Микрофон</button>
+          <button id="screen-share-button" style="width:auto; padding:6px 12px;">🖥️ Демонстрация экрана</button>
         </div>
-        <button id="screen-share-button" style="width:auto; padding:6px 12px; margin-left:8px;">🖥️ Демонстрация экрана</button>
         <div style="margin-left:auto; display:flex; gap:8px; align-items:center;"><input type="text" id="overlay-link" readonly style="width:260px; font-size:12px; padding:6px;" /><button id="copy-link-btn" style="width:auto; padding:6px 12px;">📋 Копировать</button></div>
       </div>
       <div class="add-panel">
@@ -244,7 +246,7 @@
               <option value="screenshare">Screen Share</option>
             </select>
           </label>
-          <label id="label-new-url">URL файла или YouTube <input type="text" id="new-item-url" placeholder="https://..." /></label>
+          <label id="label-new-url"><span id="url-label-text">URL файла или YouTube</span> <input type="text" id="new-item-url" placeholder="https://..." /></label>
           <label id="label-new-text" class="hidden">Текст <textarea id="new-text-content" placeholder="Введи текст"></textarea></label>
           <label id="label-new-voice" class="hidden">Голос
             <div style="display: flex; gap: 8px; align-items: center;">
@@ -267,6 +269,20 @@
         </section>
         <section class="card">
           <h2>Элементы оверлея</h2>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+            <label style="margin-bottom:0;">Фильтр:</label>
+            <select id="item-filter" style="width:auto;">
+              <option value="all">Все</option>
+              <option value="image">Изображения</option>
+              <option value="video">Видео</option>
+              <option value="audio">Аудио</option>
+              <option value="text">Текст</option>
+              <option value="youtube">YouTube</option>
+              <option value="tts">TTS</option>
+              <option value="meme">Мем</option>
+              <option value="screenshare">Screen Share</option>
+            </select>
+          </div>
           <div id="item-list"></div>
         </section>
       </div>
@@ -398,7 +414,7 @@
       const SUPABASE_FUNCTION_URL = SUPABASE_URL + "/functions/v1/jeetbot-proxy";
 
       const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js");
-      const { getDatabase, ref, onValue, push, remove, update, set, get } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js");
+      const { getDatabase, ref, onValue, push, remove, update, set, get, onDisconnect } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js");
       const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
 
       const app = initializeApp(firebaseConfig);
@@ -461,6 +477,7 @@
         itemEditor: $("item-editor"),
         labelNewText: $("label-new-text"),
         labelNewUrl: $("label-new-url"),
+        urlLabelText: $("url-label-text"),
         labelNewVoice: $("label-new-voice"),
         labelNewMemeVideo: $("label-new-meme-video"),
         labelNewMemeImage: $("label-new-meme-image"),
@@ -541,6 +558,9 @@
         visibilityRow: $("visibility-row"),
         fadeDurationContainer: $("fade-duration-container"),
         fadeDurationValue: $("fade-duration-value"),
+        itemFilter: $("item-filter"),
+        toggleExtraControls: $("toggle-extra-controls"),
+        extraControls: $("extra-controls"),
       };
 
       // цветовой индикатор
@@ -596,7 +616,7 @@
       const OFFSET_X = (CANVAS_WIDTH - STAGE_WIDTH) / 2;
       const OFFSET_Y = (CANVAS_HEIGHT - STAGE_HEIGHT) / 2;
       const NEW_ITEM_POSITION = { top: 500, left: 2450 };
-      const MAX_ROOMS = 5;
+      const MAX_ROOMS = 20;  // увеличено с 5 до 20
       const PROTECTED_ROOM_ID = "-OvMNH8xsdICOW0tzqa7";
 
       const roomsRef = ref(db, "overlay/rooms");
@@ -604,28 +624,30 @@
       let itemsRef = null;
       let items = {};
       let selectedItemId = null;
+      let selectedItemIdsSet = new Set();  // мультивыделение
       let dragState = null;
       let resizeState = null;
       let rotateState = null;
       let currentScale = 1;
       let roomsListener = null;
       let itemsListener = null;
+      let heartbeatListener = null;
       let rooms = {};
       let youtubePlayer = null;
       let youtubeReady = false;
       let urlCounter = 0;
+      let currentFilter = 'all';
 
       const BUCKET_NAME = 'overlay';
       const voicesRef = ref(db, "overlay/voices");
 
-      // ============ ИНДИКАТОР ОВЕРЛЕЯ ============
-      onValue(ref(db, "overlay/status/heartbeat"), (snap) => {
-        const ts = snap.val();
+      // ============ ИНДИКАТОР ОВЕРЛЕЯ (теперь на уровне комнаты) ============
+      function updateOverlayStatus(snapshot) {
+        const ts = snapshot.val();
         const online = ts && (Date.now() - ts < 4000);
         if (E.overlayStatusDot) E.overlayStatusDot.style.background = online ? '#4caf50' : '#f44336';
         if (E.overlayStatusText) E.overlayStatusText.textContent = online ? 'Оверлей подключён' : 'Оверлей не подключён';
-      });
-      if (mode === 'overlay') setInterval(() => set(ref(db, "overlay/status/heartbeat"), Date.now()), 2000);
+      }
 
       // ============ МИКРОФОН ============
       let micStreamInOverlay = null;
@@ -724,7 +746,7 @@
         }
       }
 
-      // ============ SCREEN SHARE (capture & send frames to Firebase) ============
+      // ============ SCREEN SHARE ============
       let screenStream = null;
       let screenCaptureInterval = null;
 
@@ -773,9 +795,7 @@
             remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`)).catch(() => {});
           });
 
-          // Start capturing frames
           screenCaptureInterval = setInterval(captureAndSendFrame, 500);
-
           E.screenShareButton.textContent = '🖥️ Стоп демонстрация';
           showNotification('✅ Демонстрация экрана транслируется в оверлей');
         } catch (e) {
@@ -792,7 +812,6 @@
           screenStream.getTracks().forEach(t => t.stop());
           screenStream = null;
         }
-        // Remove screen frame data
         if (activeRoomId) {
           set(ref(db, `overlay/rooms/${activeRoomId}/screenFrame`), null);
         }
@@ -821,7 +840,6 @@
           const screenFrameRef = ref(db, `overlay/rooms/${roomFromUrl}/screenFrame`);
           onValue(screenFrameRef, (snap) => {
             const frameData = snap.val();
-            // Update existing screenshare item image
             const img = document.querySelector(`#stage .overlay-item[data-type="screenshare"] img`);
             if (img && frameData && frameData.dataUrl) {
               img.src = frameData.dataUrl;
@@ -1125,6 +1143,32 @@
         showNotification('✅ TTS добавлен в оверлей');
       }
 
+      // обновление надписи URL‑лейбла
+      function updateUrlLabel(type) {
+        if (!E.urlLabelText) return;
+        const labels = {
+          image: 'URL картинки',
+          video: 'URL видео',
+          audio: 'URL аудио',
+          youtube: 'Ссылка YouTube',
+          default: 'URL файла'
+        };
+        E.urlLabelText.textContent = labels[type] || labels.default;
+      }
+
+      // обновление accept у file input
+      function updateFileAccept(type) {
+        if (!E.fields.file) return;
+        const accepts = {
+          image: 'image/jpeg,image/png,image/gif,image/webp,image/svg+xml,image/bmp',
+          video: 'video/mp4,video/webm,video/ogg',
+          audio: 'audio/mp3,audio/wav,audio/ogg,audio/flac,audio/aac',
+          meme: 'image/*,video/*,audio/*',
+          default: 'image/*,video/*,audio/*'
+        };
+        E.fields.file.accept = accepts[type] || accepts.default;
+      }
+
       function handleNewTypeChange() {
         if (!E.fields.type) return;
         const type = E.fields.type.value;
@@ -1136,8 +1180,11 @@
         if (E.labelNewMemeImage) E.labelNewMemeImage.classList.toggle('hidden', !isMeme);
         if (E.labelNewMemeAudio) E.labelNewMemeAudio.classList.toggle('hidden', !isMeme);
         if (E.labelNewMemeHotkey) E.labelNewMemeHotkey.classList.toggle('hidden', !isMeme);
+        updateUrlLabel(type);
+        updateFileAccept(type);
       }
       on(E.fields.type, 'change', handleNewTypeChange);
+      handleNewTypeChange(); // инициализация
 
       // ============ ГОРЯЧИЕ КЛАВИШИ J+C, O+C ============
       let jPressed = false, cPressed = false, oPressed = false;
@@ -1237,6 +1284,7 @@
         itemsListener = null;
         items = {};
         selectedItemId = null;
+        selectedItemIdsSet.clear();
         removeObsAudioListeners();
         if (E.itemEditor) E.itemEditor.classList.add('hidden');
         if (E.canvas) E.canvas.querySelectorAll('.canvas-item').forEach(el => el.remove());
@@ -1251,8 +1299,15 @@
           updateMemeHotkeyMap();
           if (mode === "overlay") refreshOverlay();
           if (selectedItemId && items[selectedItemId]) updateSelectionHandles();
-          else if (!selectedItemId) closeEditor();
+          else if (selectedItemId) closeEditor();
         });
+        // подписка на heartbeat комнаты
+        if (heartbeatListener) {
+          off(ref(db, `overlay/rooms/${activeRoomId}/heartbeat`), 'value', heartbeatListener);
+          heartbeatListener = null;
+        }
+        const heartbeatRef = ref(db, `overlay/rooms/${roomId}/heartbeat`);
+        heartbeatListener = onValue(heartbeatRef, updateOverlayStatus);
         updateOverlayLink(roomId);
         renderRoomSlots(rooms);
         if (mode === 'control') {
@@ -1291,11 +1346,17 @@
         catch(e) { alert('Скопируйте вручную: ' + E.overlayLink.value); }
       });
 
-      // ================== ХОЛСТ ==================
+      // ================== ХОЛСТ с мультивыделением через Ctrl ==================
       function updateSelectionHandles() {
         document.querySelectorAll('.canvas-item .resize-handle, .canvas-item .rotate-handle').forEach(h => h.remove());
-        document.querySelectorAll('.canvas-item.selected').forEach(el => el.classList.remove('selected'));
-        if (selectedItemId && items[selectedItemId]) {
+        document.querySelectorAll('.canvas-item.selected, .canvas-item.multi-selected').forEach(el => el.classList.remove('selected', 'multi-selected'));
+        if (selectedItemIdsSet.size > 1) {
+          // множественное выделение
+          for (const id of selectedItemIdsSet) {
+            const el = document.querySelector(`.canvas-item[data-id="${id}"]`);
+            if (el) el.classList.add('multi-selected');
+          }
+        } else if (selectedItemId) {
           const el = document.querySelector(`.canvas-item[data-id="${selectedItemId}"]`);
           if (el) {
             el.classList.add('selected');
@@ -1423,7 +1484,6 @@
       }
 
       function getCanvasCoords(e) { if (!E.canvas) return { x: 0, y: 0 }; const rect = E.canvas.getBoundingClientRect(); return { x: (e.clientX - rect.left) / currentScale, y: (e.clientY - rect.top) / currentScale }; }
-      function highlightItem(id) { if (selectedItemId === id) return; selectedItemId = id; updateSelectionHandles(); }
 
       function getResizeDirectionFromEdge(el, coords) {
         const rect = el.getBoundingClientRect();
@@ -1444,12 +1504,67 @@
         e.preventDefault();
         const coords = getCanvasCoords(e);
         const dir = getResizeDirectionFromEdge(el, coords);
-        if (dir) { e.stopPropagation(); highlightItem(id); resizeStart(e, dir); return; }
-        highlightItem(id);
-        dragState = { id, startX: coords.x, startY: coords.y, origLeft: parseFloat(el.style.left), origTop: parseFloat(el.style.top), el };
+        if (dir) { e.stopPropagation(); if (!selectedItemIdsSet.has(id)) { clearMultiSelection(); selectItem(id); } resizeStart(e, dir); return; }
+
+        // Мультивыделение через Ctrl (или Cmd на Mac)
+        if (e.ctrlKey || e.metaKey) {
+          e.stopPropagation();
+          if (selectedItemIdsSet.has(id)) {
+            selectedItemIdsSet.delete(id);
+            if (selectedItemIdsSet.size === 1) {
+              const [onlyId] = selectedItemIdsSet;
+              selectedItemId = onlyId;
+              selectItem(onlyId);
+            } else {
+              selectedItemId = null;
+              closeEditor();
+            }
+          } else {
+            selectedItemIdsSet.add(id);
+            if (selectedItemIdsSet.size === 1) {
+              selectedItemId = id;
+              selectItem(id);
+            } else {
+              selectedItemId = null;
+              closeEditor();
+            }
+          }
+          updateSelectionHandles();
+          return;
+        }
+
+        // Обычный клик
+        if (!selectedItemIdsSet.has(id)) {
+          clearMultiSelection();
+          selectItem(id);
+        }
+        // начинаем перетаскивание (одиночного или группы)
+        dragState = {
+          ids: selectedItemIdsSet.size ? [...selectedItemIdsSet] : [id],
+          startX: coords.x,
+          startY: coords.y,
+          origPositions: {},
+          el,
+        };
+        for (const moveId of dragState.ids) {
+          const moveEl = document.querySelector(`.canvas-item[data-id="${moveId}"]`);
+          if (moveEl) {
+            dragState.origPositions[moveId] = {
+              left: parseFloat(moveEl.style.left),
+              top: parseFloat(moveEl.style.top),
+            };
+          }
+        }
         el.setPointerCapture(e.pointerId);
         window.addEventListener('pointermove', canvasPointerMove);
         window.addEventListener('pointerup', canvasPointerUp, { once: true });
+      }
+
+      function clearMultiSelection() {
+        selectedItemIdsSet.clear();
+        selectedItemId = null;
+        closeEditor();
+        updateSelectionHandles();
       }
 
       function canvasPointerMove(e) {
@@ -1457,31 +1572,38 @@
         const coords = getCanvasCoords(e);
         const dx = coords.x - dragState.startX;
         const dy = coords.y - dragState.startY;
-        let newLeft = dragState.origLeft + dx;
-        let newTop = dragState.origTop + dy;
-        newLeft = Math.max(0, Math.min(CANVAS_WIDTH, newLeft));
-        newTop = Math.max(0, Math.min(CANVAS_HEIGHT, newTop));
-        if (e.shiftKey) {
-          const threshold = 20;
-          const sceneLeft = OFFSET_X;
-          const sceneRight = OFFSET_X + STAGE_WIDTH;
-          const sceneTop = OFFSET_Y;
-          const sceneBottom = OFFSET_Y + STAGE_HEIGHT;
-          if (Math.abs(newLeft - sceneLeft) < threshold) newLeft = sceneLeft;
-          else if (Math.abs(newLeft - sceneRight) < threshold) newLeft = sceneRight;
-          if (Math.abs(newTop - sceneTop) < threshold) newTop = sceneTop;
-          else if (Math.abs(newTop - sceneBottom) < threshold) newTop = sceneBottom;
+        for (const id of dragState.ids) {
+          const orig = dragState.origPositions[id];
+          if (!orig) continue;
+          let newLeft = orig.left + dx;
+          let newTop = orig.top + dy;
+          newLeft = Math.max(0, Math.min(CANVAS_WIDTH, newLeft));
+          newTop = Math.max(0, Math.min(CANVAS_HEIGHT, newTop));
+          const el = document.querySelector(`.canvas-item[data-id="${id}"]`);
+          if (el) {
+            el.style.left = newLeft + 'px';
+            el.style.top = newTop + 'px';
+          }
+          update(ref(db, `overlay/rooms/${activeRoomId}/items/${id}/position`), {
+            left: newLeft - OFFSET_X,
+            top: newTop - OFFSET_Y
+          }).catch(() => {});
         }
-        dragState.el.style.left = newLeft + 'px';
-        dragState.el.style.top = newTop + 'px';
-        try { update(ref(db, `overlay/rooms/${activeRoomId}/items/${dragState.id}/position`), { left: newLeft - OFFSET_X, top: newTop - OFFSET_Y }); } catch(e) {}
       }
 
       function canvasPointerUp() {
         if (!dragState) return;
-        const leftOnCanvas = parseFloat(dragState.el.style.left);
-        const topOnCanvas = parseFloat(dragState.el.style.top);
-        update(ref(db, `overlay/rooms/${activeRoomId}/items/${dragState.id}/position`), { left: leftOnCanvas - OFFSET_X, top: topOnCanvas - OFFSET_Y });
+        for (const id of dragState.ids) {
+          const el = document.querySelector(`.canvas-item[data-id="${id}"]`);
+          if (el) {
+            const leftOnCanvas = parseFloat(el.style.left);
+            const topOnCanvas = parseFloat(el.style.top);
+            update(ref(db, `overlay/rooms/${activeRoomId}/items/${id}/position`), {
+              left: leftOnCanvas - OFFSET_X,
+              top: topOnCanvas - OFFSET_Y
+            });
+          }
+        }
         dragState = null;
         window.removeEventListener('pointermove', canvasPointerMove);
       }
@@ -1644,6 +1766,7 @@
       // ================== РЕДАКТОР ==================
       function selectItem(id) {
         selectedItemId = id;
+        selectedItemIdsSet.clear();
         removeObsAudioListeners();
         const item = items[id];
         if (!item) return;
@@ -1792,7 +1915,12 @@
         youtubeReady = false;
       }
 
-      on(E.canvas, 'click', (e) => { if (e.target === E.canvas || !e.target.closest('.canvas-item')) closeEditor(); });
+      on(E.canvas, 'click', (e) => {
+        if (e.target === E.canvas || !e.target.closest('.canvas-item')) {
+          clearMultiSelection();
+          closeEditor();
+        }
+      });
       on(E.saveItemButton, 'click', handleSaveItem);
       on(E.deleteItemButton, 'click', handleDeleteItem);
       on(E.centerItemButton, 'click', handleCenterItem);
@@ -1813,7 +1941,7 @@
         });
       }
 
-      // ================== ОВЕРЛЕЙ (обновлённый screenshare) ==================
+      // ================== ОВЕРЛЕЙ ==================
       function refreshOverlay() {
         if (!E.stageElement) return;
         E.stageElement.innerHTML = "";
@@ -1825,7 +1953,7 @@
           const el = document.createElement("div");
           el.className = "overlay-item";
           el.dataset.id = id;
-          el.dataset.type = item.type; // для поиска screenshare
+          el.dataset.type = item.type;
           el.style.left = ((item.position?.left || 0) / STAGE_WIDTH * 100) + '%';
           el.style.top = ((item.position?.top || 0) / STAGE_HEIGHT * 100) + '%';
           el.style.width = ((item.size?.width || 320) / STAGE_WIDTH * 100) + '%';
@@ -1895,13 +2023,11 @@
               }
             }
           } else if (item.type === 'screenshare') {
-            // В оверлее используем img для приема кадров из Firebase
             inner = document.createElement('img');
             inner.style.width = '100%';
             inner.style.height = '100%';
             inner.style.objectFit = 'fill';
             inner.alt = 'Screen Share';
-            // Начальное изображение может быть пустым, обновится из Firebase
             el.appendChild(inner);
           } else if (item.type === 'youtube') {
             inner = document.createElement('iframe');
@@ -1927,8 +2053,11 @@
       function refreshItemList() {
         if (!E.itemList) return;
         E.itemList.innerHTML = "";
+        const filter = E.itemFilter ? E.itemFilter.value : 'all';
+        currentFilter = filter;
         Object.entries(items).forEach(([id, item]) => {
           if (!item) return;
+          if (filter !== 'all' && item.type !== filter) return;
           const row = document.createElement("div");
           row.className = "item-row";
 
@@ -1970,6 +2099,14 @@
         });
       }
 
+      // Обработчик смены фильтра
+      if (E.itemFilter) {
+        E.itemFilter.addEventListener('change', () => {
+          refreshItemList();
+        });
+      }
+
+      // ================== ПЕРЕТАСКИВАНИЕ В ОВЕРЛЕЕ ==================
       function overlayPointerDown(e) {
         const el = e.currentTarget;
         const id = el.dataset.id;
@@ -2015,6 +2152,12 @@
           const roomFromUrl = urlParams.get("room");
           if (roomFromUrl) {
             activeRoomId = roomFromUrl;
+            // heartbeat для этой комнаты с onDisconnect
+            const heartbeatRef = ref(db, `overlay/rooms/${roomFromUrl}/heartbeat`);
+            onDisconnect(heartbeatRef).remove();
+            const interval = setInterval(() => set(heartbeatRef, Date.now()), 2000);
+            window.addEventListener('beforeunload', () => clearInterval(interval));
+            // слушаем элементы
             itemsRef = ref(db, `overlay/rooms/${roomFromUrl}/items`);
             if (itemsListener) itemsListener();
             itemsListener = onValue(itemsRef, (snap) => { items = snap.val() || {}; refreshOverlay(); });
@@ -2042,6 +2185,14 @@
       });
       on(E.logoutButton, 'click', () => { E.secretPrompt.classList.remove('hidden'); E.controlInterface.classList.add('hidden'); });
       on(E.addItemButton, 'click', handleAddItem);
+
+      // Кнопка скрытия/показа микрофона и демонстрации
+      let extraControlsVisible = true;
+      on(E.toggleExtraControls, 'click', () => {
+        extraControlsVisible = !extraControlsVisible;
+        if (E.extraControls) E.extraControls.style.display = extraControlsVisible ? '' : 'none';
+        E.toggleExtraControls.textContent = extraControlsVisible ? '🔽 Скрыть микрофон/демонстрацию' : '🔼 Показать микрофон/демонстрацию';
+      });
 
       showMode(mode);
       window.addEventListener('resize', scaleCanvas);
