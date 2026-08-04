@@ -44,24 +44,7 @@
     .picker-card a:hover { transform: translateY(-1px); background: #7b33db; }
 
     #control-panel { display: none; background: #121212; min-height: 100vh; }
-    #control-interface { display: flex; flex-direction: row; height: 100vh; overflow: hidden; }
-
-    /* Левая панель */
-    .left-panel {
-      width: 480px; min-width: 480px; background: #0f0f12;
-      border-right: 1px solid rgba(255,255,255,0.1);
-      display: flex; flex-direction: column;
-      transition: margin-left 0.3s ease, opacity 0.3s ease, min-width 0.3s ease;
-    }
-    .left-panel.collapsed {
-      margin-left: -480px; opacity: 0; min-width: 0; width: 0; overflow: hidden;
-    }
-
-    .toggle-panel-btn {
-      position: absolute; left: 10px; top: 10px; z-index: 100;
-      width: auto; padding: 6px 10px; background: #9147ff; border: none; color: #fff;
-      border-radius: 8px; cursor: pointer; font-size: 18px;
-    }
+    #control-interface { display: flex; flex-direction: column; }
 
     .rooms-panel {
       display: flex; flex-wrap: wrap; gap: 12px; padding: 12px 24px; background: #0f0f12;
@@ -117,7 +100,7 @@
     .audio-player-box label { color: #000; font-weight: bold; margin-bottom: 4px; display: block; }
     .audio-player-box audio { width: 100%; height: 36px; display: block; }
 
-    #canvas-container { flex: 1; height: 100vh; min-height: 700px; position: relative; overflow: hidden; background: #0a0a0a; }
+    #canvas-container { width: 100%; height: 85vh; min-height: 700px; position: relative; overflow: hidden; background: #0a0a0a; }
     #canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(var(--canvas-scale, 1)); transform-origin: center center; width: 3840px; height: 2160px; background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%); box-shadow: 0 0 30px rgba(0,0,0,0.5); border-radius: 12px; }
     #stage-outline { position: absolute; left: 960px; top: 540px; width: 1920px; height: 1080px; border: 2px dashed rgba(145,71,255,0.4); pointer-events: none; }
 
@@ -242,85 +225,163 @@
   <div id="control-panel">
     <div id="secret-prompt" class="card" style="max-width:420px; margin:40px auto;"><h2>Вход модератора</h2><label><input type="password" id="secret-input" placeholder="Введи ключ" /></label><button type="button" id="login-button">Войти</button><p class="hint">После входа можно управлять оверлеем и редактировать элементы в реальном времени.</p></div>
     <div id="control-interface" class="hidden">
-      <button id="toggle-panel-btn" class="toggle-panel-btn">☰</button>
-      <div class="left-panel" id="left-panel">
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 24px; background:#0f0f12;"><h1 style="margin:0; font-size:20px;">OBS Overlay</h1><button id="logout-button" class="danger" style="width:auto; padding:6px 12px;">Выйти</button></div>
-        <div class="rooms-panel">
-          <label>Комната:</label>
-          <select id="room-select" style="width:auto;"></select>
-          <button id="new-room-btn" class="room-action-btn" title="Новая комната">➕</button>
-          <button id="rename-room-btn" class="room-action-btn" title="Переименовать">✏️</button>
-          <button id="reset-room-btn" class="room-action-btn" title="Сбросить элементы">🔄</button>
-          <button id="delete-room-btn" class="room-action-btn" title="Удалить комнату">🗑️</button>
-          <div style="margin-left:12px; display:flex; align-items:center; gap:8px;">
-            <span id="overlay-status-dot" style="width:12px; height:12px; border-radius:50%; background:red; display:inline-block;"></span>
-            <span id="overlay-status-text" style="font-size:13px;">Оверлей не подключён</span>
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 24px; background:#0f0f12;"><h1 style="margin:0; font-size:20px;">OBS Overlay</h1><button id="logout-button" class="danger" style="width:auto; padding:6px 12px;">Выйти</button></div>
+      <div class="rooms-panel">
+        <label>Комната:</label>
+        <select id="room-select" style="width:auto;"></select>
+        <button id="new-room-btn" class="room-action-btn" title="Новая комната">➕</button>
+        <button id="rename-room-btn" class="room-action-btn" title="Переименовать">✏️</button>
+        <button id="reset-room-btn" class="room-action-btn" title="Сбросить элементы">🔄</button>
+        <button id="delete-room-btn" class="room-action-btn" title="Удалить комнату">🗑️</button>
+        <div style="margin-left:12px; display:flex; align-items:center; gap:8px;">
+          <span id="overlay-status-dot" style="width:12px; height:12px; border-radius:50%; background:red; display:inline-block;"></span>
+          <span id="overlay-status-text" style="font-size:13px;">Оверлей не подключён</span>
+        </div>
+        <button id="toggle-extra-controls" class="icon-btn" title="Микрофон и демонстрация">🎤🖥️</button>
+        <div class="extra-controls-wrapper" id="extra-controls-wrapper">
+          <div style="display:flex; gap:8px; align-items:center; padding:4px 0;">
+            <button id="request-mic-permission" style="width:auto; padding:6px 10px; font-size:13px;">🎙️ Разрешить</button>
+            <select id="mic-device-select" style="width:auto; padding:6px; font-size:13px;" disabled>
+              <option value="">Микрофон</option>
+            </select>
+            <button id="mic-button" style="width:auto; padding:6px 12px;">🎤 Микрофон</button>
+            <button id="screen-share-button" style="width:auto; padding:6px 12px;">🖥️ Демонстрация</button>
           </div>
-          <button id="toggle-extra-controls" class="icon-btn" title="Микрофон и демонстрация">🎤🖥️</button>
-          <div class="extra-controls-wrapper" id="extra-controls-wrapper">
-            <div style="display:flex; gap:8px; align-items:center; padding:4px 0;">
-              <button id="request-mic-permission" style="width:auto; padding:6px 10px; font-size:13px;">🎙️ Разрешить</button>
-              <select id="mic-device-select" style="width:auto; padding:6px; font-size:13px;" disabled>
-                <option value="">Микрофон</option>
+        </div>
+        <div style="margin-left:auto; display:flex; gap:8px; align-items:center;"><input type="text" id="overlay-link" readonly style="width:260px; font-size:12px; padding:6px;" /><button id="copy-link-btn" style="width:auto; padding:6px 12px;">📋 Копировать</button></div>
+      </div>
+      <div class="add-panel">
+        <section class="card">
+          <h2>Добавить элемент</h2>
+          <label>Тип элемента
+            <select id="new-item-type">
+              <option value="image">Картинка</option>
+              <option value="video">Видео</option>
+              <option value="audio">Аудио</option>
+              <option value="text">Текст</option>
+              <option value="youtube">YouTube</option>
+              <option value="tts">TTS</option>
+            </select>
+          </label>
+          <label id="label-new-url"><span id="url-label-text">URL файла или YouTube</span> <input type="text" id="new-item-url" placeholder="https://..." /></label>
+          <label id="label-new-text" class="hidden">Текст <textarea id="new-text-content" placeholder="Введи текст"></textarea></label>
+          <label id="label-new-voice" class="hidden">Голос
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <select id="new-item-voice" style="flex: 1;">
+                <option value="">-- Без голоса (alex) --</option>
               </select>
-              <button id="mic-button" style="width:auto; padding:6px 12px;">🎤 Микрофон</button>
-              <button id="screen-share-button" style="width:auto; padding:6px 12px;">🖥️ Демонстрация</button>
+              <button type="button" id="manage-voices-btn" style="width: auto; padding: 6px 10px; font-size: 13px;">Управление</button>
+            </div>
+          </label>
+          <label>Файл для загрузки</label>
+          <div class="file-upload-wrapper">
+            <div class="file-upload-trigger"><span>📁 Выбрать файл</span><input type="file" id="new-item-file" accept="image/*,video/*,audio/*" multiple /></div>
+          </div>
+          <button type="button" id="add-item-button">Добавить элемент</button>
+          <p class="help-text" id="upload-status" style="display:none; color:#9147ff; opacity:0.9;"></p>
+        </section>
+        <section class="card">
+          <h2>Элементы оверлея</h2>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+            <label style="margin-bottom:0;">Фильтр:</label>
+            <select id="item-filter" style="width:auto;">
+              <option value="all">Все</option>
+              <option value="image">Изображения</option>
+              <option value="video">Видео</option>
+              <option value="audio">Аудио</option>
+              <option value="text">Текст</option>
+              <option value="youtube">YouTube</option>
+              <option value="tts">TTS</option>
+            </select>
+          </div>
+          <div id="item-list"></div>
+        </section>
+      </div>
+      <div id="voices-modal" class="hidden" style="display: none;">
+        <div class="modal-content">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="margin: 0;">Управление голосами</h3>
+            <button id="close-voices-modal" style="width: auto; padding: 4px 8px; background: transparent; border: 1px solid #555; color: #fff; border-radius: 6px;">✖️</button>
+          </div>
+          <div style="margin-bottom: 8px;">
+            <label style="font-size: 13px; margin-bottom: 4px;">Вставить ссылку Fish Audio</label>
+            <div style="display: flex; gap: 6px;">
+              <input type="text" id="voice-link-input" placeholder="https://fish.audio/ru/app/text-to-speech/?...modelIds=..." style="flex: 2;" />
+              <button id="extract-voice-link-btn" style="width: auto; padding: 6px 12px; font-size: 13px;">Извлечь</button>
             </div>
           </div>
-          <div style="margin-left:auto; display:flex; gap:8px; align-items:center;"><input type="text" id="overlay-link" readonly style="width:260px; font-size:12px; padding:6px;" /><button id="copy-link-btn" style="width:auto; padding:6px 12px;">📋 Копировать</button></div>
+          <div style="margin-bottom: 12px; display: flex; gap: 6px;">
+            <input type="text" id="new-voice-name" placeholder="Название голоса" style="flex: 1;" />
+            <input type="text" id="new-voice-model-id" placeholder="modelId" style="flex: 2;" />
+            <button id="add-voice-btn" style="width: auto; padding: 6px 12px;">Добавить</button>
+          </div>
+          <div id="voices-list" style="max-height: 300px; overflow-y: auto;"></div>
         </div>
-        <div class="add-panel">
-          <section class="card">
-            <h2>Добавить элемент</h2>
-            <label>Тип элемента
-              <select id="new-item-type">
-                <option value="image">Картинка</option>
-                <option value="video">Видео</option>
-                <option value="audio">Аудио</option>
-                <option value="text">Текст</option>
-                <option value="youtube">YouTube</option>
-                <option value="tts">TTS</option>
-              </select>
-            </label>
-            <label id="label-new-url"><span id="url-label-text">URL файла или YouTube</span> <input type="text" id="new-item-url" placeholder="https://..." /></label>
-            <label id="label-new-text" class="hidden">Текст <textarea id="new-text-content" placeholder="Введи текст"></textarea></label>
-            <label id="label-new-voice" class="hidden">Голос
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <select id="new-item-voice" style="flex: 1;">
-                  <option value="">-- Без голоса (alex) --</option>
-                </select>
-                <button type="button" id="manage-voices-btn" style="width: auto; padding: 6px 10px; font-size: 13px;">Управление</button>
+      </div>
+      <div id="item-editor" class="hidden">
+        <div class="editor-header">
+          <button id="center-item-button" title="Центрировать">🎯</button>
+          <button id="delete-item-button" class="danger" title="Удалить">🗑️</button>
+          <button id="close-editor-button" title="Закрыть">✖️</button>
+        </div>
+        <div class="editor-body">
+          <div class="editor-left">
+            <div id="text-settings" class="hidden">
+              <label>Текст <textarea id="selected-item-text" rows="2"></textarea></label>
+              <div class="wide-row">
+                <label>Размер шрифта <input type="number" id="selected-item-font-size" min="12" /></label>
+                <label>Цвет текста <input type="color" id="selected-item-color" value="#ffffff" /></label>
               </div>
+              <div class="wide-row">
+                <label><input type="checkbox" id="selected-item-bold" /> Жирный</label>
+                <label><input type="checkbox" id="selected-item-italic" /> Курсив</label>
+                <label><input type="checkbox" id="selected-item-strike" /> Зачеркнутый</label>
+              </div>
+            </div>
+            <div id="media-settings" class="hidden">
+              <div id="audio-preview-box" class="audio-player-box hidden">
+                <label>Превью 🔊</label>
+                <audio id="audio-preview" controls></audio>
+              </div>
+              <div id="audio-obs-box" class="audio-player-box hidden">
+                <label>OBS 🔈</label>
+                <audio id="audio-obs" controls></audio>
+              </div>
+              <div id="chroma-settings" class="hidden" style="margin-top:8px;">
+                <label class="switch-label">
+                  Хромакей
+                  <div class="switch"><input type="checkbox" id="selected-chroma-enabled" /><span class="slider"></span></div>
+                </label>
+                <div class="color-picker-wrapper">
+                  <div class="color-swatch" id="chroma-swatch" style="background: #00ff00;"></div>
+                  <input type="color" id="selected-chroma-color" value="#00ff00" class="color-input-hidden" />
+                  <button id="pick-chroma-color" style="width:auto; padding:6px 10px;">🎨 Пипетка</button>
+                </div>
+              </div>
+              <div id="media-preview-container" style="margin-bottom:8px;"></div>
+            </div>
+            <div id="appearance-sound-settings" class="hidden">
+              <label>URL звука появления <input type="text" id="selected-appearance-sound" /></label>
+              <label class="switch-label">
+                Звук в OBS
+                <div class="switch"><input type="checkbox" id="selected-appearance-sound-obs" /><span class="slider"></span></div>
+              </label>
+            </div>
+          </div>
+          <div class="editor-right" id="editor-right-panel">
+            <label class="switch-label" id="visibility-row">
+              Видимый
+              <div class="switch"><input type="checkbox" id="selected-item-visible" /><span class="slider"></span></div>
             </label>
-            <label>Файл для загрузки</label>
-            <div class="file-upload-wrapper">
-              <div class="file-upload-trigger"><span>📁 Выбрать файл</span><input type="file" id="new-item-file" accept="image/*,video/*,audio/*" multiple /></div>
+            <div id="fade-duration-container" class="hidden">
+              <label style="margin-bottom:0;">Плавность (сек)</label>
+              <input type="range" id="selected-fade-duration" min="0" max="10" step="0.1" value="0" style="width:100%;" />
+              <span id="fade-duration-value">0</span>
             </div>
-            <button type="button" id="add-item-button">Добавить элемент</button>
-            <p class="help-text" id="upload-status" style="display:none; color:#9147ff; opacity:0.9;"></p>
-          </section>
-          <section class="card">
-            <h2>Элементы оверлея</h2>
-            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-              <label style="margin-bottom:0;">Фильтр:</label>
-              <select id="item-filter" style="width:auto;">
-                <option value="all">Все</option>
-                <option value="image">Изображения</option>
-                <option value="video">Видео</option>
-                <option value="audio">Аудио</option>
-                <option value="text">Текст</option>
-                <option value="youtube">YouTube</option>
-                <option value="tts">TTS</option>
-              </select>
-            </div>
-            <div id="item-list"></div>
-          </section>
+          </div>
         </div>
-        <div id="voices-modal" class="hidden" style="display: none;">
-          <!-- ... модальное окно голосов без изменений ... -->
-        </div>
-        <div id="item-editor" class="hidden">
-          <!-- ... редактор без изменений ... -->
+        <div class="editor-footer">
+          <button id="save-item-button">Сохранить</button>
         </div>
       </div>
       <div id="canvas-container"><div id="canvas"><div id="stage-outline"></div></div></div>
@@ -482,8 +543,6 @@
         itemFilter: $("item-filter"),
         toggleExtraControls: $("toggle-extra-controls"),
         extraControlsWrapper: $("extra-controls-wrapper"),
-        leftPanel: $("left-panel"),
-        togglePanelBtn: $("toggle-panel-btn"),
       };
 
       function bindColorSwatch(swatch, input) {
@@ -1033,7 +1092,7 @@
         }
         const heartbeatRef = ref(db, `overlay/rooms/${roomId}/heartbeat`);
         heartbeatListener = onValue(heartbeatRef, updateOverlayStatus);
-        // Уникальная ссылка
+        // Уникальная ссылка для комнаты
         updateOverlayLink(roomId);
         renderRoomSelect();
         if (mode === 'control') {
@@ -1048,7 +1107,7 @@
         }
       }
 
-      // Уникальная ссылка для каждой комнаты
+      // Генерация уникальной ссылки для выбранной комнаты
       function updateOverlayLink(roomId) {
         const url = new URL(location.href);
         url.searchParams.set('mode', 'overlay');
@@ -1086,8 +1145,7 @@
         try { await navigator.clipboard.writeText(E.overlayLink.value); showNotification('✅ Ссылка скопирована'); }
         catch(e) { alert('Скопируйте вручную: ' + E.overlayLink.value); }
       });
-
-      // ================== ХОЛСТ ==================
+            // ================== ХОЛСТ ==================
       function updateSelectionHandles() {
         document.querySelectorAll('.canvas-item .resize-handle, .canvas-item .rotate-handle').forEach(h => h.remove());
         document.querySelectorAll('.canvas-item.selected, .canvas-item.multi-selected').forEach(el => el.classList.remove('selected', 'multi-selected'));
@@ -1812,7 +1870,7 @@
         E.itemFilter.addEventListener('change', refreshItemList);
       }
 
-      // ================== РЕЖИМЫ И СВОРАЧИВАНИЕ ПАНЕЛИ ==================
+      // ================== РЕЖИМЫ И ЗАПУСК ==================
       function showMode(m) {
         if (!E.overlayContainer || !E.controlPanel || !E.modePicker) return;
         if (m === "overlay") {
@@ -1851,18 +1909,11 @@
       on(E.logoutButton, 'click', () => { E.secretPrompt.classList.remove('hidden'); E.controlInterface.classList.add('hidden'); });
       on(E.addItemButton, 'click', handleAddItem);
 
-      // Сворачивание панели микрофона
+      // Кнопка сворачивания микрофона/демонстрации
       let extraOpen = false;
       on(E.toggleExtraControls, 'click', () => {
         extraOpen = !extraOpen;
         E.extraControlsWrapper.classList.toggle('open', extraOpen);
-      });
-
-      // Сворачивание левой панели
-      let leftPanelOpen = true;
-      on(E.togglePanelBtn, 'click', () => {
-        leftPanelOpen = !leftPanelOpen;
-        E.leftPanel.classList.toggle('collapsed', !leftPanelOpen);
       });
 
       showMode(mode);
