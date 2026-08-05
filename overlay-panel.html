@@ -410,7 +410,6 @@
         </div>
     </div>
     <div id="dnd-notification"></div>
-
     <script type="module">
         (async () => {
             if (document.readyState === 'loading') await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
@@ -890,7 +889,6 @@
                 clearTimeout(E.dndNotification._timeout);
                 E.dndNotification._timeout = setTimeout(() => E.dndNotification.classList.remove("show"), dur);
             }
-
             // ========== ССЫЛКИ (ГАРАНТИРОВАННО УНИКАЛЬНЫЕ) ==========
             function generateOverlayLink(roomId) {
                 const base = window.location.origin + window.location.pathname;
@@ -899,6 +897,22 @@
             function updateOverlayLink(roomId) {
                 if (!E.overlayLink || !roomId) return;
                 E.overlayLink.value = generateOverlayLink(roomId);
+            }
+
+            // ИСПРАВЛЕНИЕ: единый порядок комнат (тот же, что в выпадающем списке),
+            // используется везде, где нужно выбрать комнату "по умолчанию".
+            // Без этого Object.keys(rooms)[0] всегда возвращал killinb
+            // (её ключ -OvMNH8xsdICOW0tzqa7 лексикографически меньше остальных),
+            // из-за чего ссылка killinb показывалась во всех комнатах.
+            function getSortedRoomIds() {
+                return Object.entries(rooms).sort((a, b) => {
+                    const aPreset = PRESET_ROOMS.findIndex(p => p.id === a[0]);
+                    const bPreset = PRESET_ROOMS.findIndex(p => p.id === b[0]);
+                    if (aPreset !== -1 && bPreset !== -1) return aPreset - bPreset;
+                    if (aPreset !== -1) return -1;
+                    if (bPreset !== -1) return 1;
+                    return (a[1].name || '').localeCompare(b[1].name || '');
+                }).map(([id]) => id);
             }
 
             // Предустановленные комнаты (вечные ссылки)
@@ -927,9 +941,9 @@
                         }
                     }
                     renderRoomSelect();
-                    // Автовыбор первой комнаты и обновление ссылки
+                    // Автовыбор первой комнаты (по единому порядку) и обновление ссылки
                     if (!activeRoomId && Object.keys(rooms).length > 0) {
-                        switchToRoom(Object.keys(rooms)[0]);
+                        switchToRoom(getSortedRoomIds()[0]);
                     }
                 });
             }
@@ -937,15 +951,9 @@
             function renderRoomSelect() {
                 if (!E.roomSelect) return;
                 E.roomSelect.innerHTML = '';
-                const sorted = Object.entries(rooms).sort((a, b) => {
-                    const aPreset = PRESET_ROOMS.findIndex(p => p.id === a[0]);
-                    const bPreset = PRESET_ROOMS.findIndex(p => p.id === b[0]);
-                    if (aPreset !== -1 && bPreset !== -1) return aPreset - bPreset;
-                    if (aPreset !== -1) return -1;
-                    if (bPreset !== -1) return 1;
-                    return (a[1].name || '').localeCompare(b[1].name || '');
-                });
-                sorted.forEach(([id, data]) => {
+                const sortedIds = getSortedRoomIds();
+                sortedIds.forEach((id) => {
+                    const data = rooms[id];
                     const opt = document.createElement('option');
                     opt.value = id;
                     opt.textContent = data.name || id;
@@ -966,6 +974,16 @@
                 if (E.canvas) E.canvas.querySelectorAll('.canvas-item').forEach(el => el.remove());
                 if (E.itemList) E.itemList.innerHTML = '';
                 if (E.stageElement) E.stageElement.innerHTML = '';
+
+                // ИСПРАВЛЕНИЕ: отписываемся от heartbeat СТАРОЙ комнаты до того,
+                // как activeRoomId будет перезаписан новым значением.
+                // Раньше отписка шла по уже новому activeRoomId — слушатель
+                // старой комнаты оставался висеть.
+                if (heartbeatListener && activeRoomId) {
+                    off(ref(db, `overlay/rooms/${activeRoomId}/heartbeat`), 'value', heartbeatListener);
+                    heartbeatListener = null;
+                }
+
                 activeRoomId = roomId;
                 itemsRef = ref(db, `overlay/rooms/${roomId}/items`);
                 itemsListener = onValue(itemsRef, (snap) => {
@@ -976,13 +994,9 @@
                     if (selectedItemId && items[selectedItemId]) updateSelectionHandles();
                     else if (selectedItemId) closeEditor();
                 });
-                if (heartbeatListener) {
-                    off(ref(db, `overlay/rooms/${activeRoomId}/heartbeat`), 'value', heartbeatListener);
-                    heartbeatListener = null;
-                }
                 const heartbeatRef = ref(db, `overlay/rooms/${roomId}/heartbeat`);
                 heartbeatListener = onValue(heartbeatRef, updateOverlayStatus);
-                // Немедленно обновляем ссылку
+                // Немедленно обновляем ссылку для АКТИВНОЙ (только что выбранной) комнаты
                 updateOverlayLink(roomId);
                 renderRoomSelect();
                 if (mode === 'control') {
@@ -1084,7 +1098,6 @@
             window.addEventListener('click', (e) => {
                 if (e.target === E.copyRoomModal) closeCopyRoomModal();
             });
-
             // ============ ДОБАВЛЕНИЕ ЭЛЕМЕНТА ============
             async function handleAddItem() {
                 if (!E.fields.type) return;
@@ -1220,7 +1233,8 @@
                         initRooms().then(() => {
                             get(roomsRef).then(snap => {
                                 rooms = snap.val() || {};
-                                if (!activeRoomId) switchToRoom(Object.keys(rooms)[0]);
+                                // ИСПРАВЛЕНИЕ: единый порядок вместо Object.keys(rooms)[0]
+                                if (!activeRoomId) switchToRoom(getSortedRoomIds()[0]);
                                 scaleCanvas();
                                 if (!window._dragDropEnabled) enableDragDrop();
                             });
@@ -1611,7 +1625,6 @@
                 rotateState = null;
                 window.removeEventListener('pointermove', rotateMove);
             }
-
             // Хромакей
             function applyChromaFilter(el, colorHex, id, enabled) {
                 if (!enabled || !colorHex) { el.style.filter = ''; return; }
@@ -1772,7 +1785,6 @@
             on(E.deleteItemButton, 'click', handleDeleteItem);
             on(E.centerItemButton, 'click', handleCenterItem);
             on(E.closeEditorButton, 'click', closeEditor);
-
             // ================== DRAG & DROP ==================
             function enableDragDrop() {
                 if (window._dragDropEnabled) return;
@@ -1999,7 +2011,8 @@
                     } else {
                         const snap = await get(roomsRef); const rooms = snap.val() || {};
                         if (Object.keys(rooms).length > 0) {
-                            switchToRoom(Object.keys(rooms)[0]);
+                            // ИСПРАВЛЕНИЕ: единый порядок вместо Object.keys(rooms)[0]
+                            switchToRoom(getSortedRoomIds()[0]);
                         }
                     }
                     scaleCanvas();
