@@ -890,7 +890,7 @@
         E.dndNotification._timeout = setTimeout(() => E.dndNotification.classList.remove("show"), dur);
       }
 
-      // Генерация уникальной ссылки
+      // Генерация уникальной ссылки для OBS
       function generateOverlayLink(roomId) {
         const base = window.location.origin + window.location.pathname;
         return `${base}?mode=overlay&room=${roomId}`;
@@ -900,7 +900,7 @@
         E.overlayLink.value = generateOverlayLink(roomId);
       }
 
-      // Предустановленные комнаты
+      // Предустановленные комнаты (ссылки закреплены)
       async function ensurePresetRooms() {
         for (const room of PRESET_ROOMS) {
           const snap = await get(ref(db, `overlay/rooms/${room.id}`));
