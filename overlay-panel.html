@@ -71,6 +71,7 @@
     button.danger { background: #e03a3a; }
     #item-list { max-height: 200px; overflow-y: auto; margin-top: 8px; }
     .item-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 12px; background: rgba(255,255,255,0.04); margin-bottom: 8px; }
+    .item-row.selected { border: 2px solid #9147ff; }
     .item-row button { width: auto; padding: 6px 10px; font-size: 13px; }
     .item-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; }
     .hidden { display: none !important; }
@@ -106,6 +107,10 @@
     .canvas-item .canvas-placeholder {
       width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
       background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 24px;
+    }
+    .canvas-item .canvas-text {
+      white-space: pre-wrap; word-break: break-word; padding: 4px;
+      box-sizing: border-box; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
     }
     .canvas-item.invisible {
       opacity: 0.35;
@@ -168,12 +173,14 @@
 
     .broken-image { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(255,0,0,0.2); color: #fff; font-size: 14px; border-radius: 6px; }
 
-    #voices-modal {
+    #voices-modal,
+    #copy-modal {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0,0,0,0.7); z-index: 1000;
       display: flex; align-items: center; justify-content: center;
     }
-    #voices-modal .modal-content {
+    #voices-modal .modal-content,
+    #copy-modal .modal-content {
       background: #1a1a1a; border: 1px solid #333; border-radius: 12px;
       padding: 20px; width: 420px; max-height: 80vh; overflow-y: auto;
     }
@@ -202,6 +209,17 @@
       background: #00ff00; cursor: pointer;
     }
     .color-input-hidden { position: absolute; opacity: 0; width: 0; height: 0; }
+
+    .emoji-btn {
+      border: none !important;
+      background: transparent !important;
+      padding: 4px 8px;
+      border-radius: 4px;
+      color: #ccc;
+    }
+    .emoji-btn:hover {
+      background: rgba(255,255,255,0.1) !important;
+    }
   </style>
 </head>
 <body>
@@ -219,9 +237,11 @@
           <span id="overlay-status-dot" style="width:12px; height:12px; border-radius:50%; background:red; display:inline-block;"></span>
           <span id="overlay-status-text" style="font-size:13px;">Оверлей не подключён</span>
         </div>
-        <button id="mic-button" style="width:auto; padding:6px 12px; margin-left:8px;">🎤 Микрофон</button>
-        <button id="screen-share-button" style="width:auto; padding:6px 12px; margin-left:8px;">🖥️ Демонстрация экрана</button>
-        <div style="margin-left:auto; display:flex; gap:8px; align-items:center;"><input type="text" id="overlay-link" readonly style="width:260px; font-size:12px; padding:6px;" /><button id="copy-link-btn" style="width:auto; padding:6px 12px;">📋 Копировать</button></div>
+        <button id="mic-button" class="emoji-btn" style="width:auto; padding:6px 12px; margin-left:8px;">🎤 Микрофон</button>
+        <button id="screen-share-button" class="emoji-btn" style="width:auto; padding:6px 12px; margin-left:8px;">🖥️ Демонстрация экрана</button>
+        <button id="toggle-mic-visibility" class="emoji-btn" style="width:auto; padding:4px 8px; font-size:12px; margin-left:4px;">👁️ Скрыть микрофон</button>
+        <button id="toggle-screenshare-visibility" class="emoji-btn" style="width:auto; padding:4px 8px; font-size:12px;">👁️ Скрыть демонстрацию</button>
+        <div style="margin-left:auto; display:flex; gap:8px; align-items:center;"><input type="text" id="overlay-link" readonly style="width:260px; font-size:12px; padding:6px;" /><button id="copy-link-btn" class="emoji-btn" style="width:auto; padding:6px 12px;">📋 Копировать</button></div>
       </div>
       <div class="add-panel">
         <section class="card">
@@ -234,11 +254,9 @@
               <option value="text">Текст</option>
               <option value="youtube">YouTube</option>
               <option value="tts">TTS</option>
-              <option value="meme">Мем</option>
-              <option value="screenshare">Screen Share</option>
             </select>
           </label>
-          <label id="label-new-url">URL файла или YouTube <input type="text" id="new-item-url" placeholder="https://..." /></label>
+          <label id="label-new-url">URL файла <input type="text" id="new-item-url" placeholder="https://..." /></label>
           <label id="label-new-text" class="hidden">Текст <textarea id="new-text-content" placeholder="Введи текст"></textarea></label>
           <label id="label-new-voice" class="hidden">Голос
             <div style="display: flex; gap: 8px; align-items: center;">
@@ -268,7 +286,7 @@
         <div class="modal-content">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <h3 style="margin: 0;">Управление голосами</h3>
-            <button id="close-voices-modal" style="width: auto; padding: 4px 8px; background: transparent; border: 1px solid #555; color: #fff; border-radius: 6px;">✖️</button>
+            <button id="close-voices-modal" class="emoji-btn" style="width: auto; padding: 4px 8px;">✖️</button>
           </div>
           <div style="margin-bottom: 8px;">
             <label style="font-size: 13px; margin-bottom: 4px;">Вставить ссылку Fish Audio</label>
@@ -285,11 +303,21 @@
           <div id="voices-list" style="max-height: 300px; overflow-y: auto;"></div>
         </div>
       </div>
-      <div id="item-editor" class="hidden">
+      <div id="copy-modal" class="hidden" style="display: none;">
+        <div class="modal-content">
+          <h3>Копировать элемент в комнату</h3>
+          <select id="copy-target-room"></select>
+          <div style="margin-top:12px; display:flex; gap:8px;">
+            <button id="confirm-copy-btn">Копировать</button>
+            <button id="cancel-copy-btn">Отмена</button>
+          </div>
+        </div>
+      </div>
+            <div id="item-editor" class="hidden">
         <div class="editor-header">
-          <button id="center-item-button" title="Центрировать">🎯</button>
-          <button id="delete-item-button" class="danger" title="Удалить">🗑️</button>
-          <button id="close-editor-button" title="Закрыть">✖️</button>
+          <button id="center-item-button" class="emoji-btn" title="Центрировать">🎯</button>
+          <button id="delete-item-button" class="danger emoji-btn" title="Удалить">🗑️</button>
+          <button id="close-editor-button" class="emoji-btn" title="Закрыть">✖️</button>
         </div>
         <div class="editor-body">
           <div class="editor-left">
@@ -322,7 +350,7 @@
                 <div class="color-picker-wrapper">
                   <div class="color-swatch" id="chroma-swatch" style="background: #00ff00;"></div>
                   <input type="color" id="selected-chroma-color" value="#00ff00" class="color-input-hidden" />
-                  <button id="pick-chroma-color" style="width:auto; padding:6px 10px;">🎨 Пипетка</button>
+                  <button id="pick-chroma-color" class="emoji-btn" style="width:auto; padding:6px 10px;">🎨 Пипетка</button>
                 </div>
               </div>
               <div id="media-preview-container" style="margin-bottom:8px;"></div>
@@ -339,7 +367,7 @@
               <div class="color-picker-wrapper">
                 <div class="color-swatch" id="meme-chroma-swatch" style="background: #00ff00;"></div>
                 <input type="color" id="selected-meme-chroma-color" value="#00ff00" class="color-input-hidden" />
-                <button id="pick-meme-chroma-color" style="width:auto; padding:6px 10px;">🎨 Пипетка</button>
+                <button id="pick-meme-chroma-color" class="emoji-btn" style="width:auto; padding:6px 10px;">🎨 Пипетка</button>
               </div>
             </div>
             <div id="appearance-sound-settings" class="hidden">
@@ -401,7 +429,6 @@
       const on = (el, event, handler) => el?.addEventListener(event, handler);
       const off = (el, event, handler) => el?.removeEventListener(event, handler);
 
-      // ========== ХРОМАКЕЙ (удаляет выбранный цвет) ==========
       function createChromaFilter(colorHex, id) {
         const existing = document.getElementById('chroma-filter-' + id);
         if (existing) existing.remove();
@@ -436,6 +463,49 @@
         defs.insertAdjacentHTML('beforeend', svg);
       }
 
+      function applyChromaFilter(el, colorHex, id, enabled) {
+        if (!enabled || !colorHex) {
+          el.style.filter = '';
+          return;
+        }
+        createChromaFilter(colorHex, id);
+        el.style.filter = `url(#chroma-filter-${id})`;
+      }
+
+      const STAGE_WIDTH = 1920;
+      const STAGE_HEIGHT = 1080;
+      const CANVAS_WIDTH = 3840;
+      const CANVAS_HEIGHT = 2160;
+      const OFFSET_X = (CANVAS_WIDTH - STAGE_WIDTH) / 2;
+      const OFFSET_Y = (CANVAS_HEIGHT - STAGE_HEIGHT) / 2;
+      const NEW_ITEM_POSITION = { top: 500, left: 2450 };
+      const MAX_ROOMS = 5;
+      const PROTECTED_ROOM_ID = "-OvMNH8xsdICOW0tzqa7";
+
+      const roomsRef = ref(db, "overlay/rooms");
+      let activeRoomId = null;
+      let itemsRef = null;
+      let items = {};
+      let selectedItemId = null;
+      let dragState = null;
+      let resizeState = null;
+      let rotateState = null;
+      let currentScale = 1;
+      let roomsListener = null;
+      let itemsListener = null;
+      let rooms = {};
+      let youtubePlayer = null;
+      let youtubeReady = false;
+      let urlCounter = 0;
+      let micStream = null;
+      let screenStream = null;
+
+      const BUCKET_NAME = 'overlay';
+      const voicesRef = ref(db, "overlay/voices");
+
+      let overlayStatusListener = null;
+      let copySourceItemId = null;
+
       const E = {
         overlayContainer: $("overlay-container"),
         stageElement: $("stage"),
@@ -451,20 +521,12 @@
         labelNewText: $("label-new-text"),
         labelNewUrl: $("label-new-url"),
         labelNewVoice: $("label-new-voice"),
-        labelNewMemeVideo: $("label-new-meme-video"),
-        labelNewMemeImage: $("label-new-meme-image"),
-        labelNewMemeAudio: $("label-new-meme-audio"),
-        labelNewMemeHotkey: $("label-new-meme-hotkey"),
         fields: {
           type: $("new-item-type"),
           url: $("new-item-url"),
           text: $("new-text-content"),
           voice: $("new-item-voice"),
           file: $("new-item-file"),
-          memeVideo: $("new-meme-video"),
-          memeImage: $("new-meme-image"),
-          memeAudio: $("new-meme-audio"),
-          memeHotkey: $("new-meme-hotkey"),
           selectedVisible: $("selected-item-visible"),
           selectedText: $("selected-item-text"),
           selectedFontSize: $("selected-item-font-size"),
@@ -472,16 +534,16 @@
           selectedBold: $("selected-item-bold"),
           selectedItalic: $("selected-item-italic"),
           selectedStrike: $("selected-item-strike"),
+          selectedChromaColor: $("selected-chroma-color"),
+          selectedChromaEnabled: $("selected-chroma-enabled"),
+          selectedAppearanceSound: $("selected-appearance-sound"),
+          selectedAppearanceSoundObs: $("selected-appearance-sound-obs"),
           selectedMemeVideo: $("selected-meme-video"),
           selectedMemeImage: $("selected-meme-image"),
           selectedMemeAudio: $("selected-meme-audio"),
           selectedMemeHotkey: $("selected-meme-hotkey"),
-          selectedChromaColor: $("selected-chroma-color"),
-          selectedChromaEnabled: $("selected-chroma-enabled"),
           selectedMemeChromaColor: $("selected-meme-chroma-color"),
           selectedMemeChromaEnabled: $("selected-meme-chroma-enabled"),
-          selectedAppearanceSound: $("selected-appearance-sound"),
-          selectedAppearanceSoundObs: $("selected-appearance-sound-obs"),
         },
         textSettings: $("text-settings"),
         mediaSettings: $("media-settings"),
@@ -523,11 +585,16 @@
         memeChromaSwatch: $("meme-chroma-swatch"),
         micButton: $("mic-button"),
         screenShareButton: $("screen-share-button"),
+        toggleMicVisibility: $("toggle-mic-visibility"),
+        toggleScreenshareVisibility: $("toggle-screenshare-visibility"),
         editorRightPanel: $("editor-right-panel"),
         visibilityRow: $("visibility-row"),
+        copyModal: $("copy-modal"),
+        copyTargetRoom: $("copy-target-room"),
+        confirmCopyBtn: $("confirm-copy-btn"),
+        cancelCopyBtn: $("cancel-copy-btn"),
       };
 
-      // цветовой индикатор
       function bindColorSwatch(swatch, input) {
         if (!swatch || !input) return;
         const update = () => { swatch.style.background = input.value; };
@@ -566,46 +633,88 @@
         on(E.audioObs, 'ended', obsAudioHandlers.ended);
       }
 
-      const STAGE_WIDTH = 1920;
-      const STAGE_HEIGHT = 1080;
-      const CANVAS_WIDTH = 3840;
-      const CANVAS_HEIGHT = 2160;
-      const OFFSET_X = (CANVAS_WIDTH - STAGE_WIDTH) / 2;
-      const OFFSET_Y = (CANVAS_HEIGHT - STAGE_HEIGHT) / 2;
-      const NEW_ITEM_POSITION = { top: 500, left: 2450 };
-      const MAX_ROOMS = 5;
-      const PROTECTED_ROOM_ID = "-OvMNH8xsdICOW0tzqa7";
+      function getFileType(file) {
+        const mime = file.type;
+        if (mime.startsWith('image/')) return 'image';
+        if (mime.startsWith('video/')) return 'video';
+        if (mime.startsWith('audio/')) return 'audio';
+        const name = file.name.toLowerCase();
+        if (/\.(jpg|jpeg|png|gif|webp|svg|bmp)$/.test(name)) return 'image';
+        if (/\.(mp4|webm|mov|avi|mkv)$/.test(name)) return 'video';
+        if (/\.(mp3|wav|ogg|flac|aac)$/.test(name)) return 'audio';
+        return null;
+      }
 
-      const roomsRef = ref(db, "overlay/rooms");
-      let activeRoomId = null;
-      let itemsRef = null;
-      let items = {};
-      let selectedItemId = null;
-      let dragState = null;
-      let resizeState = null;
-      let rotateState = null;
-      let currentScale = 1;
-      let roomsListener = null;
-      let itemsListener = null;
-      let rooms = {};
-      let youtubePlayer = null;
-      let youtubeReady = false;
-      let urlCounter = 0;
+      async function uploadFileToSupabase(file, retries = 3) {
+        const filePath = `overlay-uploads/${Date.now()}-${file.name}`;
+        for (let i = 0; i < retries; i++) {
+          try {
+            const { data, error } = await supabase.storage.from(BUCKET_NAME).upload(filePath, file, { cacheControl: '3600', upsert: false });
+            if (error) throw new Error(error.message);
+            const { data: urlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+            return { url: urlData.publicUrl, path: filePath };
+          } catch (e) { if (i === retries - 1) throw e; await new Promise(r => setTimeout(r, 2000)); }
+        }
+      }
 
-      const BUCKET_NAME = 'overlay';
-      const voicesRef = ref(db, "overlay/voices");
+      async function deleteFileFromSupabase(path) {
+        if (!path) return;
+        const { error } = await supabase.storage.from(BUCKET_NAME).remove([path]);
+        if (error) console.warn('Ошибка удаления из Supabase:', error);
+      }
 
-      // ============ ИНДИКАТОР ОВЕРЛЕЯ ============
-      onValue(ref(db, "overlay/status/heartbeat"), (snap) => {
-        const ts = snap.val();
-        const online = ts && (Date.now() - ts < 4000);
-        if (E.overlayStatusDot) E.overlayStatusDot.style.background = online ? '#4caf50' : '#f44336';
-        if (E.overlayStatusText) E.overlayStatusText.textContent = online ? 'Оверлей подключён' : 'Оверлей не подключён';
-      });
-      if (mode === 'overlay') setInterval(() => set(ref(db, "overlay/status/heartbeat"), Date.now()), 2000);
+      function createDefaultItem(type, payload = {}) {
+        urlCounter++;
+        let title = payload.title || '';
+        if (!title) {
+          if (payload.url && !payload.file) title = `URL ${urlCounter}`;
+          else if (type === 'audio' || type === 'tts') title = payload.fileName || `Аудио ${urlCounter}`;
+          else if (type === 'text') title = payload.text ? payload.text.split(' ').slice(0, 3).join(' ') + '…' : 'Текст';
+          else title = type.charAt(0).toUpperCase() + type.slice(1);
+        }
+        return {
+          type, title,
+          visible: type !== 'audio' && type !== 'tts',
+          position: { ...NEW_ITEM_POSITION },
+          size: { width: (type === 'audio' || type === 'tts') ? 300 : 400, height: (type === 'audio' || type === 'tts') ? 60 : 240 },
+          rotation: 0, volume: 1, playing: false,
+          style: { fontSize: 36, bold: false, italic: false, strike: false, color: "#ffffff" },
+          media: { playbackRate: 1, currentTime: 0 },
+          fileName: payload.fileName || null,
+          hotkey: payload.hotkey || null,
+          chromaColor: payload.chromaColor || null,
+          chromaEnabled: payload.chromaEnabled || false,
+          appearanceSound: payload.appearanceSound || null,
+          appearanceSoundObs: payload.appearanceSoundObs || false,
+          ...payload
+        };
+      }
+
+      function showNotification(msg, dur = 3000) {
+        if (!E.dndNotification) return;
+        E.dndNotification.textContent = msg;
+        E.dndNotification.classList.add("show");
+        clearTimeout(E.dndNotification._timeout);
+        E.dndNotification._timeout = setTimeout(() => E.dndNotification.classList.remove("show"), dur);
+      }
+
+      // ============ ОВЕРЛЕЙ СТАТУС ПО КОМНАТЕ ============
+      function watchOverlayStatus(roomId) {
+        if (overlayStatusListener) {
+          const statusRef = ref(db, `overlay/status/${activeRoomId}/heartbeat`);
+          off(statusRef, 'value', overlayStatusListener);
+        }
+        if (!roomId) return;
+        const statusRef = ref(db, `overlay/status/${roomId}/heartbeat`);
+        overlayStatusListener = onValue(statusRef, (snap) => {
+          const ts = snap.val();
+          const online = ts && (Date.now() - ts < 4000);
+          if (E.overlayStatusDot) E.overlayStatusDot.style.background = online ? '#4caf50' : '#f44336';
+          if (E.overlayStatusText) E.overlayStatusText.textContent = online ? 'Оверлей подключён' : 'Оверлей не подключён';
+        });
+      }
 
       // ============ МИКРОФОН ============
-      let micStream = null;
       async function toggleMic() {
         if (micStream) {
           micStream.getTracks().forEach(t => t.stop());
@@ -627,52 +736,89 @@
           showNotification('❌ Нет доступа к микрофону');
         }
       }
-      on(E.micButton, 'click', toggleMic);
 
-      // ============ SCREEN SHARE ============
-      let screenStream = null;
+      // ============ ДЕМОНСТРАЦИЯ ЭКРАНА (только захват) ============
       async function toggleScreenShare() {
         if (screenStream) {
           screenStream.getTracks().forEach(t => t.stop());
           screenStream = null;
           E.screenShareButton.textContent = '🖥️ Демонстрация экрана';
-          // убираем элемент screenshare из комнаты (если был)
-          const allItems = items || {};
-          for (const [id, item] of Object.entries(allItems)) {
-            if (item?.type === 'screenshare') {
-              await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
-            }
-          }
           return;
         }
         try {
           screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
           const track = screenStream.getVideoTracks()[0];
           if (!track) throw new Error('No video track');
-
-          // Создаём элемент screenshare в Firebase
-          const item = createDefaultItem('screenshare', {
-            title: 'Screen Share',
-            visible: true,
-            size: { width: 1280, height: 720 }
-          });
-          const newRef = await push(itemsRef, item);
-          const id = newRef.key;
-
-          // При остановке шаринга пользователем – удаляем элемент
           track.addEventListener('ended', () => {
-            remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`)).catch(() => {});
             screenStream = null;
             E.screenShareButton.textContent = '🖥️ Демонстрация экрана';
           });
-
           E.screenShareButton.textContent = '🖥️ Стоп демонстрация';
-          showNotification('✅ Демонстрация экрана добавлена в оверлей');
+          showNotification('✅ Демонстрация экрана запущена');
         } catch (e) {
-          showNotification('❌ Не удалось захватить экран: ' + e.message);
+          showNotification('❌ Не удалось захватить экран');
         }
       }
+
+      on(E.micButton, 'click', toggleMic);
       on(E.screenShareButton, 'click', toggleScreenShare);
+      on(E.toggleMicVisibility, 'click', () => {
+        E.micButton.classList.toggle('hidden');
+        E.toggleMicVisibility.textContent = E.micButton.classList.contains('hidden') ? '👁️ Показать микрофон' : '👁️ Скрыть микрофон';
+      });
+      on(E.toggleScreenshareVisibility, 'click', () => {
+        E.screenShareButton.classList.toggle('hidden');
+        E.toggleScreenshareVisibility.textContent = E.screenShareButton.classList.contains('hidden') ? '👁️ Показать демонстрацию' : '👁️ Скрыть демонстрацию';
+      });
+
+      // ============ КОПИРОВАНИЕ ЭЛЕМЕНТА В ДРУГУЮ КОМНАТУ ============
+      function openCopyModal(itemId) {
+        copySourceItemId = itemId;
+        if (!E.copyTargetRoom || !E.copyModal) return;
+        E.copyTargetRoom.innerHTML = '';
+        const currentRoomId = activeRoomId;
+        Object.entries(rooms).forEach(([id, data]) => {
+          if (id === currentRoomId) return;
+          const opt = document.createElement('option');
+          opt.value = id;
+          opt.textContent = data.name || id;
+          E.copyTargetRoom.appendChild(opt);
+        });
+        if (E.copyTargetRoom.options.length === 0) {
+          showNotification('Нет других комнат для копирования');
+          return;
+        }
+        E.copyModal.style.display = 'flex';
+        E.copyModal.classList.remove('hidden');
+      }
+
+      on(E.cancelCopyBtn, 'click', () => {
+        E.copyModal.style.display = 'none';
+        E.copyModal.classList.add('hidden');
+        copySourceItemId = null;
+      });
+
+      on(E.confirmCopyBtn, 'click', async () => {
+        if (!copySourceItemId || !E.copyTargetRoom) return;
+        const targetRoomId = E.copyTargetRoom.value;
+        if (!targetRoomId) {
+          showNotification('Выберите комнату');
+          return;
+        }
+        const sourceItem = items[copySourceItemId];
+        if (!sourceItem) return;
+        try {
+          const cleanItem = { ...sourceItem };
+          delete cleanItem.supabasePath;
+          await push(ref(db, `overlay/rooms/${targetRoomId}/items`), cleanItem);
+          showNotification('✅ Элемент скопирован');
+        } catch (e) {
+          showNotification('❌ Ошибка копирования');
+        }
+        E.copyModal.style.display = 'none';
+        E.copyModal.classList.add('hidden');
+        copySourceItemId = null;
+      });
 
       // ============ ГОЛОСА ============
       function extractVoiceFromUrl(rawUrl) {
@@ -734,108 +880,58 @@
         showNotification('✅ Голос добавлен');
       });
 
-      // ============ MEME HOTKEYS ============
-      const memeHotkeyMap = {};
-      function updateMemeHotkeyMap() {
-        for (const k of Object.keys(memeHotkeyMap)) delete memeHotkeyMap[k];
-        Object.entries(items).forEach(([id, item]) => { if (item?.type === 'meme' && item.hotkey) memeHotkeyMap[item.hotkey.toUpperCase()] = id; });
+      function handleNewTypeChange() {
+        if (!E.fields.type) return;
+        const type = E.fields.type.value;
+        E.labelNewUrl.classList.toggle('hidden', !['image','video','audio','youtube'].includes(type));
+        E.labelNewText.classList.toggle('hidden', !['text','tts'].includes(type));
+        if (E.labelNewVoice) E.labelNewVoice.classList.toggle('hidden', type !== 'tts');
+        // поля meme всегда скрыты, не показываем
       }
-      document.addEventListener('keydown', (e) => {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
-        const key = e.key.toUpperCase();
-        if (memeHotkeyMap[key] && e.key.length === 1) { e.preventDefault(); triggerMeme(memeHotkeyMap[key]); }
-      });
-      function triggerMeme(id) {
-        if (!items[id] || items[id].type !== 'meme') return;
-        update(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`), { visible: true, playing: true });
-        const item = items[id];
-        if (item.appearanceSound) {
-          const audio = new Audio(item.appearanceSound);
-          audio.volume = item.appearanceSoundObs ? 1 : 0;
-          audio.play().catch(() => {});
-          if (item.appearanceSoundObs) {
-            const obsAudio = document.createElement('audio');
-            obsAudio.src = item.appearanceSound;
-            obsAudio.autoplay = true;
-            obsAudio.muted = false;
-            obsAudio.volume = 1;
-            obsAudio.style.display = 'none';
-            document.body.appendChild(obsAudio);
-            obsAudio.addEventListener('ended', () => obsAudio.remove());
+      on(E.fields.type, 'change', handleNewTypeChange);
+      handleNewTypeChange();
+
+      // ============ TTS ============
+      async function requestTTS() {
+        try {
+          const text = E.fields.text?.value?.trim() || '';
+          if (!text) { showNotification('❌ Введите текст для озвучки'); return; }
+          const voice = E.fields.voice?.value || '';
+          const url = `${SUPABASE_FUNCTION_URL}?text=${encodeURIComponent(text)}&voice=${encodeURIComponent(voice)}`;
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`Ошибка TTS: ${res.status}`);
+          const data = await res.json();
+          if (data && data.url) { handleTTSVoiceUrl(data.url); }
+          else if (data && data.error) { showNotification('❌ TTS: ' + data.error); }
+          else { showNotification('❌ Неожиданный ответ от TTS'); }
+        } catch (e) { showNotification('❌ Не удалось получить TTS: ' + e.message); }
+      }
+
+      async function handleTTSVoiceUrl(url) {
+        if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
+        const allItems = items || {};
+        for (const [id, item] of Object.entries(allItems)) {
+          if (item?.type === 'tts') {
+            if (item.storagePath) { try { await supabase.storage.from(BUCKET_NAME).remove([item.storagePath]); } catch (e) {} }
+            await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
           }
         }
-      }
-      function handleMemeEnded(id) {
-        update(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`), { playing: false, visible: false });
-      }
-
-      // ============ УТИЛИТЫ ============
-      function getFileType(file) {
-        const mime = file.type;
-        if (mime.startsWith('image/')) return 'image';
-        if (mime.startsWith('video/')) return 'video';
-        if (mime.startsWith('audio/')) return 'audio';
-        const name = file.name.toLowerCase();
-        if (/\.(jpg|jpeg|png|gif|webp|svg|bmp)$/.test(name)) return 'image';
-        if (/\.(mp4|webm|mov|avi|mkv)$/.test(name)) return 'video';
-        if (/\.(mp3|wav|ogg|flac|aac)$/.test(name)) return 'audio';
-        return null;
-      }
-      async function uploadFileToSupabase(file, retries = 3) {
-        const filePath = `overlay-uploads/${Date.now()}-${file.name}`;
-        for (let i = 0; i < retries; i++) {
-          try {
-            const { data, error } = await supabase.storage.from(BUCKET_NAME).upload(filePath, file, { cacheControl: '3600', upsert: false });
-            if (error) throw new Error(error.message);
-            const { data: urlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
-            return { url: urlData.publicUrl, path: filePath };
-          } catch (e) { if (i === retries - 1) throw e; await new Promise(r => setTimeout(r, 2000)); }
-        }
-      }
-      async function deleteFileFromSupabase(path) {
-        if (!path) return;
-        const { error } = await supabase.storage.from(BUCKET_NAME).remove([path]);
-        if (error) console.warn('Ошибка удаления из Supabase:', error);
-      }
-      function createDefaultItem(type, payload = {}) {
-        urlCounter++;
-        let title = payload.title || '';
-        if (!title) {
-          if (payload.url && !payload.file) title = `URL ${urlCounter}`;
-          else if (type === 'audio' || type === 'tts') title = payload.fileName || `Аудио ${urlCounter}`;
-          else if (type === 'text') title = payload.text ? payload.text.split(' ').slice(0, 3).join(' ') + '…' : 'Текст';
-          else if (type === 'meme') title = 'Мем ' + urlCounter;
-          else if (type === 'screenshare') title = 'Screen Share';
-          else title = type.charAt(0).toUpperCase() + type.slice(1);
-        }
-        return {
-          type, title,
-          visible: type !== 'audio' && type !== 'tts' && type !== 'meme',
-          position: { ...NEW_ITEM_POSITION },
-          size: { width: (type === 'audio' || type === 'tts') ? 300 : 400, height: (type === 'audio' || type === 'tts') ? 60 : 240 },
-          rotation: 0, volume: 1, playing: false,
-          style: { fontSize: 36, bold: false, italic: false, strike: false, color: "#ffffff" },
-          media: { playbackRate: 1, currentTime: 0 },
-          fileName: payload.fileName || null,
-          hotkey: payload.hotkey || null,
-          memeVideo: payload.memeVideo || null,
-          memeImage: payload.memeImage || null,
-          memeAudio: payload.memeAudio || null,
-          chromaColor: payload.chromaColor || null,
-          chromaEnabled: payload.chromaEnabled || false,
-          appearanceSound: payload.appearanceSound || null,
-          appearanceSoundObs: payload.appearanceSoundObs || false,
-          ...payload
-        };
-      }
-      function showNotification(msg, dur = 3000) {
-        if (!E.dndNotification) return;
-        E.dndNotification.textContent = msg;
-        E.dndNotification.classList.add("show");
-        clearTimeout(E.dndNotification._timeout);
-        E.dndNotification._timeout = setTimeout(() => E.dndNotification.classList.remove("show"), dur);
+        const urlObj = new URL(url);
+        const pathParts = urlObj.pathname.split('/');
+        const bucketIndex = pathParts.indexOf('overlay');
+        const storagePath = bucketIndex >= 0 ? pathParts.slice(bucketIndex + 1).join('/') : null;
+        const item = createDefaultItem('tts', { url, fileName: 'TTS' });
+        item.playing = true; item.visible = false;
+        if (storagePath) item.storagePath = storagePath;
+        await push(itemsRef, item);
+        showNotification('✅ TTS добавлен в оверлей');
       }
 
+      // Продолжение следует...
+    })();
+  </script>
+</body>
+</html>
       // ============ ДОБАВЛЕНИЕ ЭЛЕМЕНТА ============
       async function handleAddItem() {
         if (!E.fields.type) return;
@@ -845,48 +941,6 @@
         const file = E.fields.file?.files[0] || null;
 
         if (type === 'tts') { await requestTTS(); return; }
-        if (type === 'screenshare') {
-          await toggleScreenShare();
-          return;
-        }
-        if (type === 'meme') {
-          const files = E.fields.file?.files;
-          let memeVideo = '', memeImage = '', memeAudio = '';
-          if (files && files.length > 0) {
-            for (const file of files) {
-              const fileType = getFileType(file);
-              if (!fileType) { showNotification('❌ Неподдерживаемый тип: ' + file.name); continue; }
-              try {
-                const { url } = await uploadFileToSupabase(file);
-                if (fileType === 'video') memeVideo = url;
-                else if (fileType === 'image') memeImage = url;
-                else if (fileType === 'audio') memeAudio = url;
-              } catch (e) { showNotification('❌ Ошибка загрузки: ' + e.message); return; }
-            }
-            E.fields.file.value = '';
-          } else {
-            memeVideo = E.fields.memeVideo?.value?.trim() || '';
-            memeImage = E.fields.memeImage?.value?.trim() || '';
-            memeAudio = E.fields.memeAudio?.value?.trim() || '';
-          }
-          const hotkey = E.fields.memeHotkey?.value?.trim().toUpperCase() || '';
-          if (!memeVideo && !memeImage) { showNotification('❌ Укажи видео или картинку'); return; }
-          if (!memeVideo && !memeAudio) { showNotification('❌ Добавь звук'); return; }
-          if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
-          const item = createDefaultItem('meme', {
-            memeVideo: memeVideo || null, memeImage: memeImage || null, memeAudio: memeAudio || null,
-            hotkey: hotkey || null,
-            title: 'Мем' + (hotkey ? ' [' + hotkey + ']' : ''),
-          });
-          item.visible = false; item.playing = false;
-          await push(itemsRef, item);
-          if (E.fields.memeVideo) E.fields.memeVideo.value = '';
-          if (E.fields.memeImage) E.fields.memeImage.value = '';
-          if (E.fields.memeAudio) E.fields.memeAudio.value = '';
-          if (E.fields.memeHotkey) E.fields.memeHotkey.value = '';
-          showNotification('✅ Мем добавлен');
-          return;
-        }
         if (type === "text") {
           if (!text) { alert("Введите текст"); return; }
           if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
@@ -928,86 +982,7 @@
         if (!url && !file) showNotification('Введите URL или выберите файл');
       }
 
-      // ============ TTS ============
-      async function requestTTS() {
-        try {
-          const text = E.fields.text?.value?.trim() || '';
-          if (!text) { showNotification('❌ Введите текст для озвучки'); return; }
-          const voice = E.fields.voice?.value || '';
-          const url = `${SUPABASE_FUNCTION_URL}?text=${encodeURIComponent(text)}&voice=${encodeURIComponent(voice)}`;
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`Ошибка TTS: ${res.status}`);
-          const data = await res.json();
-          if (data && data.url) { handleTTSVoiceUrl(data.url); }
-          else if (data && data.error) { showNotification('❌ TTS: ' + data.error); }
-          else { showNotification('❌ Неожиданный ответ от TTS'); }
-        } catch (e) { showNotification('❌ Не удалось получить TTS: ' + e.message); }
-      }
-
-      async function handleTTSVoiceUrl(url) {
-        if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
-        const allItems = items || {};
-        for (const [id, item] of Object.entries(allItems)) {
-          if (item?.type === 'tts') {
-            if (item.storagePath) { try { await supabase.storage.from(BUCKET_NAME).remove([item.storagePath]); } catch (e) {} }
-            await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
-          }
-        }
-        const urlObj = new URL(url);
-        const pathParts = urlObj.pathname.split('/');
-        const bucketIndex = pathParts.indexOf('overlay');
-        const storagePath = bucketIndex >= 0 ? pathParts.slice(bucketIndex + 1).join('/') : null;
-        const item = createDefaultItem('tts', { url, fileName: 'TTS' });
-        item.playing = true; item.visible = false;
-        if (storagePath) item.storagePath = storagePath;
-        await push(itemsRef, item);
-        showNotification('✅ TTS добавлен в оверлей');
-      }
-
-      function handleNewTypeChange() {
-        if (!E.fields.type) return;
-        const type = E.fields.type.value;
-        E.labelNewUrl.classList.toggle('hidden', !['image','video','audio','youtube'].includes(type));
-        E.labelNewText.classList.toggle('hidden', !['text','tts'].includes(type));
-        if (E.labelNewVoice) E.labelNewVoice.classList.toggle('hidden', type !== 'tts');
-        const isMeme = type === 'meme';
-        if (E.labelNewMemeVideo) E.labelNewMemeVideo.classList.toggle('hidden', !isMeme);
-        if (E.labelNewMemeImage) E.labelNewMemeImage.classList.toggle('hidden', !isMeme);
-        if (E.labelNewMemeAudio) E.labelNewMemeAudio.classList.toggle('hidden', !isMeme);
-        if (E.labelNewMemeHotkey) E.labelNewMemeHotkey.classList.toggle('hidden', !isMeme);
-      }
-      on(E.fields.type, 'change', handleNewTypeChange);
-            // ============ ГОРЯЧИЕ КЛАВИШИ J+C, O+C ============
-      let jPressed = false, cPressed = false, oPressed = false;
-      document.addEventListener('keydown', (e) => {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
-        if (e.key === 'j' || e.key === 'J') jPressed = true;
-        if (e.key === 'c' || e.key === 'C') cPressed = true;
-        if (e.key === 'o' || e.key === 'O') oPressed = true;
-        if ((jPressed && cPressed) || (oPressed && cPressed)) {
-          if (E.secretPrompt && !E.secretPrompt.classList.contains('hidden')) {
-            E.secretPrompt.classList.add('hidden');
-            E.controlInterface.classList.remove('hidden');
-            initRooms().then(() => {
-              get(roomsRef).then(snap => {
-                rooms = snap.val() || {};
-                if (!activeRoomId) {
-                  const firstId = Object.keys(rooms)[0];
-                  if (firstId) switchToRoom(firstId);
-                }
-                scaleCanvas();
-                if (!window._dragDropEnabled) enableDragDrop();
-              });
-            });
-          }
-        }
-      });
-      document.addEventListener('keyup', (e) => {
-        if (e.key === 'j' || e.key === 'J') jPressed = false;
-        if (e.key === 'c' || e.key === 'C') cPressed = false;
-        if (e.key === 'o' || e.key === 'O') oPressed = false;
-      });
-
+      // ============ ХОЛСТ ============
       function scaleCanvas() {
         if (!E.canvasContainer || !E.canvas) return;
         const cw = E.canvasContainer.clientWidth;
@@ -1018,6 +993,566 @@
       }
       window.addEventListener('resize', scaleCanvas);
 
+      function getCanvasCoords(e) {
+        if (!E.canvas) return { x: 0, y: 0 };
+        const rect = E.canvas.getBoundingClientRect();
+        return {
+          x: (e.clientX - rect.left) / currentScale,
+          y: (e.clientY - rect.top) / currentScale
+        };
+      }
+
+      function buildCanvasItem(id, item) {
+        const el = document.createElement('div');
+        el.className = 'canvas-item';
+        el.dataset.id = id;
+        el.style.display = 'flex';
+        const left = (item.position?.left || 0) + OFFSET_X;
+        const top = (item.position?.top || 0) + OFFSET_Y;
+        el.style.left = left + 'px';
+        el.style.top = top + 'px';
+        el.style.width = (item.size?.width || 320) + 'px';
+        el.style.height = (item.size?.height || 240) + 'px';
+        el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
+        if (!item.visible) el.classList.add('invisible');
+
+        if (item.type === 'audio' || item.type === 'tts') {
+          // не показываем на холсте аудио-элементы
+          el.style.display = 'none';
+          return el;
+        }
+
+        if (item.type === 'text') {
+          const textDiv = document.createElement('div');
+          textDiv.className = 'canvas-text';
+          textDiv.textContent = item.text || '';
+          textDiv.style.fontSize = (item.style?.fontSize || 36) + 'px';
+          textDiv.style.color = item.style?.color || '#fff';
+          textDiv.style.fontWeight = item.style?.bold ? '700' : '400';
+          textDiv.style.fontStyle = item.style?.italic ? 'italic' : 'normal';
+          textDiv.style.textDecoration = item.style?.strike ? 'line-through' : 'none';
+          el.appendChild(textDiv);
+          el.addEventListener('pointerdown', canvasPointerDown);
+          return el;
+        }
+
+        const previewUrl = item.type === 'meme'
+          ? (item.memeVideo || item.memeImage)
+          : (item.type === 'image' || item.type === 'video' ? item.url : null);
+
+        if (previewUrl) {
+          const tag = (item.type === 'video' || (item.type === 'meme' && item.memeVideo)) ? 'video' : 'img';
+          const inner = document.createElement(tag);
+          inner.src = previewUrl;
+          inner.style.width = '100%';
+          inner.style.height = '100%';
+          inner.style.objectFit = 'fill';
+          if (tag === 'video') {
+            inner.muted = true;
+            inner.loop = true;
+            inner.playsInline = true;
+            inner.autoplay = false;
+          }
+          inner.onerror = () => {
+            inner.style.display = 'none';
+            const broken = document.createElement('div');
+            broken.className = 'broken-image';
+            broken.textContent = '🖼️❌';
+            el.appendChild(broken);
+          };
+          el.appendChild(inner);
+        } else {
+          const placeholder = document.createElement('div');
+          placeholder.className = 'canvas-placeholder';
+          if (item.type === 'youtube') placeholder.innerHTML = '📺';
+          else placeholder.innerHTML = '🖼️';
+          el.appendChild(placeholder);
+        }
+        el.addEventListener('pointerdown', canvasPointerDown);
+        return el;
+      }
+
+      function refreshCanvas() {
+        if (!E.canvas) return;
+        const currentSelected = selectedItemId;
+        const existing = {};
+        E.canvas.querySelectorAll('.canvas-item').forEach(el => { existing[el.dataset.id] = el; });
+        const newIds = new Set(Object.keys(items));
+        for (const id in existing) { if (!newIds.has(id)) existing[id].remove(); }
+        Object.entries(items).forEach(([id, item]) => {
+          if (!item) return;
+          let el = existing[id];
+          if (!el) {
+            el = buildCanvasItem(id, item);
+            E.canvas.appendChild(el);
+          } else {
+            const left = (item.position?.left || 0) + OFFSET_X;
+            const top = (item.position?.top || 0) + OFFSET_Y;
+            el.style.left = left + 'px';
+            el.style.top = top + 'px';
+            el.style.width = (item.size?.width || 320) + 'px';
+            el.style.height = (item.size?.height || 240) + 'px';
+            el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
+            el.classList.toggle('invisible', !item.visible);
+
+            if (item.type === 'text') {
+              const textDiv = el.querySelector('.canvas-text');
+              if (textDiv) {
+                textDiv.textContent = item.text || '';
+                textDiv.style.fontSize = (item.style?.fontSize || 36) + 'px';
+                textDiv.style.color = item.style?.color || '#fff';
+                textDiv.style.fontWeight = item.style?.bold ? '700' : '400';
+                textDiv.style.fontStyle = item.style?.italic ? 'italic' : 'normal';
+                textDiv.style.textDecoration = item.style?.strike ? 'line-through' : 'none';
+              }
+            } else if (item.type === 'audio' || item.type === 'tts') {
+              el.style.display = 'none';
+            } else {
+              const inner = el.querySelector('img, video');
+              const previewUrl = item.type === 'meme'
+                ? (item.memeVideo || item.memeImage)
+                : (item.type === 'image' || item.type === 'video' ? item.url : null);
+              if (previewUrl && inner && inner.src !== previewUrl) {
+                inner.src = previewUrl;
+              } else if (!previewUrl && inner) {
+                inner.remove();
+                const placeholder = document.createElement('div');
+                placeholder.className = 'canvas-placeholder';
+                if (item.type === 'youtube') placeholder.innerHTML = '📺';
+                else placeholder.innerHTML = '🖼️';
+                el.appendChild(placeholder);
+              }
+            }
+          }
+        });
+        if (currentSelected && items[currentSelected]) {
+          selectedItemId = currentSelected;
+          updateSelectionHandles();
+        } else {
+          closeEditor();
+        }
+      }
+
+      function updateSelectionHandles() {
+        document.querySelectorAll('.canvas-item .resize-handle, .canvas-item .rotate-handle').forEach(h => h.remove());
+        document.querySelectorAll('.canvas-item.selected').forEach(el => el.classList.remove('selected'));
+        if (selectedItemId && items[selectedItemId]) {
+          const el = document.querySelector(`.canvas-item[data-id="${selectedItemId}"]`);
+          if (el) {
+            el.classList.add('selected');
+            ['nw','ne','sw','se','n','s','w','e'].forEach(pos => {
+              const handle = document.createElement('div');
+              handle.className = 'resize-handle ' + pos;
+              handle.addEventListener('pointerdown', (e) => { e.stopPropagation(); resizeStart(e, pos); });
+              el.appendChild(handle);
+            });
+            const rotHandle = document.createElement('div');
+            rotHandle.className = 'rotate-handle';
+            rotHandle.addEventListener('pointerdown', rotateStart);
+            el.appendChild(rotHandle);
+          }
+        }
+      }
+
+      function canvasPointerDown(e) {
+        const el = e.currentTarget;
+        const id = el.dataset.id;
+        if (!id) return;
+        e.preventDefault();
+        const coords = getCanvasCoords(e);
+        const dir = getResizeDirectionFromEdge(el, coords);
+        if (dir) { e.stopPropagation(); highlightItem(id); resizeStart(e, dir); return; }
+        highlightItem(id);
+        dragState = {
+          id,
+          startX: coords.x,
+          startY: coords.y,
+          origLeft: parseFloat(el.style.left),
+          origTop: parseFloat(el.style.top),
+          el
+        };
+        el.setPointerCapture(e.pointerId);
+        window.addEventListener('pointermove', canvasPointerMove);
+        window.addEventListener('pointerup', canvasPointerUp, { once: true });
+      }
+
+      function getResizeDirectionFromEdge(el, coords) {
+        const rect = el.getBoundingClientRect();
+        const x = coords.x, y = coords.y;
+        const threshold = 12;
+        let dir = '';
+        if (Math.abs(y - rect.top) < threshold) dir += 'n';
+        else if (Math.abs(y - rect.bottom) < threshold) dir += 's';
+        if (Math.abs(x - rect.left) < threshold) dir += 'w';
+        else if (Math.abs(x - rect.right) < threshold) dir += 'e';
+        return dir;
+      }
+
+      function canvasPointerMove(e) {
+        if (!dragState) return;
+        const coords = getCanvasCoords(e);
+        const dx = coords.x - dragState.startX;
+        const dy = coords.y - dragState.startY;
+        let newLeft = dragState.origLeft + dx;
+        let newTop = dragState.origTop + dy;
+        newLeft = Math.max(0, Math.min(CANVAS_WIDTH, newLeft));
+        newTop = Math.max(0, Math.min(CANVAS_HEIGHT, newTop));
+        if (e.shiftKey) {
+          const threshold = 20;
+          const sceneLeft = OFFSET_X;
+          const sceneRight = OFFSET_X + STAGE_WIDTH;
+          const sceneTop = OFFSET_Y;
+          const sceneBottom = OFFSET_Y + STAGE_HEIGHT;
+          if (Math.abs(newLeft - sceneLeft) < threshold) newLeft = sceneLeft;
+          else if (Math.abs(newLeft - sceneRight) < threshold) newLeft = sceneRight;
+          if (Math.abs(newTop - sceneTop) < threshold) newTop = sceneTop;
+          else if (Math.abs(newTop - sceneBottom) < threshold) newTop = sceneBottom;
+        }
+        dragState.el.style.left = newLeft + 'px';
+        dragState.el.style.top = newTop + 'px';
+        try {
+          update(ref(db, `overlay/rooms/${activeRoomId}/items/${dragState.id}/position`), {
+            left: newLeft - OFFSET_X,
+            top: newTop - OFFSET_Y
+          });
+        } catch(e) {}
+      }
+
+      function canvasPointerUp() {
+        if (!dragState) return;
+        const leftOnCanvas = parseFloat(dragState.el.style.left);
+        const topOnCanvas = parseFloat(dragState.el.style.top);
+        update(ref(db, `overlay/rooms/${activeRoomId}/items/${dragState.id}/position`), {
+          left: leftOnCanvas - OFFSET_X,
+          top: topOnCanvas - OFFSET_Y
+        });
+        dragState = null;
+        window.removeEventListener('pointermove', canvasPointerMove);
+      }
+
+      function resizeStart(e, direction) {
+        const el = e.currentTarget?.parentElement ? e.currentTarget.parentElement : e.currentTarget;
+        const id = el.dataset.id;
+        if (!id) return;
+        e.stopPropagation();
+        const coords = getCanvasCoords(e);
+        const origW = parseFloat(el.style.width);
+        const origH = parseFloat(el.style.height);
+        resizeState = {
+          id, el, dir: direction,
+          startX: coords.x, startY: coords.y,
+          origW, origH,
+          origLeft: parseFloat(el.style.left),
+          origTop: parseFloat(el.style.top)
+        };
+        if (e.pointerId !== undefined) el.setPointerCapture(e.pointerId);
+        window.addEventListener('pointermove', resizeMove);
+        window.addEventListener('pointerup', resizeEnd, { once: true });
+      }
+
+      function resizeMove(e) {
+        if (!resizeState) return;
+        const coords = getCanvasCoords(e);
+        const dx = coords.x - resizeState.startX;
+        const dy = coords.y - resizeState.startY;
+        let newW = resizeState.origW, newH = resizeState.origH;
+        let newLeft = resizeState.origLeft, newTop = resizeState.origTop;
+        const dir = resizeState.dir;
+
+        let fixedLeft = false, fixedRight = false, fixedTop = false, fixedBottom = false;
+        if (dir.includes('e')) { fixedLeft = true; }
+        if (dir.includes('w')) { fixedRight = true; }
+        if (dir.includes('s')) { fixedTop = true; }
+        if (dir.includes('n')) { fixedBottom = true; }
+
+        if (dir.includes('e')) newW = resizeState.origW + dx;
+        if (dir.includes('w')) newW = resizeState.origW - dx;
+        if (dir.includes('s')) newH = resizeState.origH + dy;
+        if (dir.includes('n')) newH = resizeState.origH - dy;
+
+        if (!e.shiftKey) {
+          const origRatio = resizeState.origW / resizeState.origH;
+          if (dir === 'e' || dir === 'w') { newH = newW / origRatio; }
+          else if (dir === 'n' || dir === 's') { newW = newH * origRatio; }
+          else {
+            const dw = Math.abs(newW - resizeState.origW);
+            const dh = Math.abs(newH - resizeState.origH);
+            if (dw > dh) { newH = newW / origRatio; }
+            else { newW = newH * origRatio; }
+          }
+        }
+        newW = Math.max(20, newW);
+        newH = Math.max(20, newH);
+        if (fixedLeft) { newLeft = resizeState.origLeft + (newW - resizeState.origW) / 2; }
+        else if (fixedRight) { newLeft = resizeState.origLeft - (newW - resizeState.origW) / 2; }
+        if (fixedTop) { newTop = resizeState.origTop + (newH - resizeState.origH) / 2; }
+        else if (fixedBottom) { newTop = resizeState.origTop - (newH - resizeState.origH) / 2; }
+
+        resizeState.el.style.width = newW + 'px';
+        resizeState.el.style.height = newH + 'px';
+        resizeState.el.style.left = newLeft + 'px';
+        resizeState.el.style.top = newTop + 'px';
+
+        const item = items[resizeState.id];
+        if (item) {
+          item.size = { width: newW, height: newH };
+          item.position = { left: newLeft - OFFSET_X, top: newTop - OFFSET_Y };
+          update(ref(db, `overlay/rooms/${activeRoomId}/items/${resizeState.id}`), {
+            size: item.size,
+            position: item.position
+          });
+        }
+      }
+
+      function resizeEnd() {
+        if (!resizeState) return;
+        resizeState = null;
+        window.removeEventListener('pointermove', resizeMove);
+      }
+
+      function rotateStart(e) {
+        const el = e.currentTarget.parentElement;
+        const id = el.dataset.id;
+        if (!id) return;
+        e.stopPropagation();
+        const centerX = parseFloat(el.style.left);
+        const centerY = parseFloat(el.style.top);
+        rotateState = { id, el, centerX, centerY };
+        e.currentTarget.setPointerCapture(e.pointerId);
+        window.addEventListener('pointermove', rotateMove);
+        window.addEventListener('pointerup', rotateEnd, { once: true });
+      }
+
+      function rotateMove(e) {
+        if (!rotateState) return;
+        const coords = getCanvasCoords(e);
+        const dx = coords.x - rotateState.centerX;
+        const dy = coords.y - rotateState.centerY;
+        let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+        if (e.shiftKey) { const snap = 15; angle = Math.round(angle / snap) * snap; }
+        angle = Math.round(angle);
+        rotateState.el.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
+        try { update(ref(db, `overlay/rooms/${activeRoomId}/items/${rotateState.id}`), { rotation: angle }); } catch(e) {}
+      }
+
+      function rotateEnd() {
+        if (!rotateState) return;
+        const match = rotateState.el.style.transform.match(/rotate\(([-\d.]+)deg\)/);
+        const newAngle = match ? parseFloat(match[1]) : 0;
+        update(ref(db, `overlay/rooms/${activeRoomId}/items/${rotateState.id}`), { rotation: newAngle });
+        rotateState = null;
+        window.removeEventListener('pointermove', rotateMove);
+      }
+
+      function highlightItem(id) {
+        if (selectedItemId === id) return;
+        selectedItemId = id;
+        updateSelectionHandles();
+        // подсвечиваем в списке элементов
+        document.querySelectorAll('.item-row.selected').forEach(row => row.classList.remove('selected'));
+        const row = document.querySelector(`.item-row[data-id="${id}"]`);
+        if (row) row.classList.add('selected');
+        selectItem(id);
+      }
+
+      // ============ СПИСОК ЭЛЕМЕНТОВ ============
+      function refreshItemList() {
+        if (!E.itemList) return;
+        E.itemList.innerHTML = "";
+        Object.entries(items).forEach(([id, item]) => {
+          if (!item) return;
+          const row = document.createElement("div");
+          row.className = "item-row" + (id === selectedItemId ? " selected" : "");
+          row.dataset.id = id;
+
+          let previewHtml = '';
+          if (item.type === 'audio' || item.type === 'tts') {
+            previewHtml = `<span style="width:48px; text-align:center;">🎵</span>`;
+          } else if (item.type === 'text') {
+            const words = (item.text || '').split(' ').slice(0, 3).join(' ');
+            previewHtml = `<span style="width:48px; text-align:center;">${words || '…'}</span>`;
+          } else if (item.type === 'youtube') {
+            previewHtml = `<span style="width:48px; text-align:center;">📺</span>`;
+          } else {
+            const previewUrl = item.type === 'meme'
+              ? (item.memeVideo || item.memeImage)
+              : (item.url || '');
+            if (previewUrl) {
+              previewHtml = `<img class="item-thumb" src="${previewUrl}" onerror="this.style.display='none'" />`;
+            } else {
+              previewHtml = `<span style="width:48px; text-align:center;">🖼️</span>`;
+            }
+          }
+
+          row.innerHTML = `
+            ${previewHtml}
+            <div><strong>${item.title||id}</strong><br/><small>${item.type}${item.hotkey ? ' ['+item.hotkey+']' : ''}</small></div>
+            <div style="display:flex; gap:6px;">
+              <button class="edit-item emoji-btn">✏️</button>
+              <button class="copy-item emoji-btn">📋</button>
+              <button class="delete-item danger emoji-btn">🗑️</button>
+            </div>`;
+
+          row.querySelector('.edit-item').onclick = (e) => {
+            e.stopPropagation();
+            highlightItem(id);
+          };
+          row.querySelector('.copy-item').onclick = (e) => {
+            e.stopPropagation();
+            openCopyModal(id);
+          };
+          row.querySelector('.delete-item').onclick = async (e) => {
+            e.stopPropagation();
+            if (item.supabasePath) await deleteFileFromSupabase(item.supabasePath);
+            await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
+            if (selectedItemId === id) closeEditor();
+          };
+          row.addEventListener('click', () => highlightItem(id));
+          E.itemList.appendChild(row);
+        });
+      }
+
+      // ============ РЕДАКТОР ============
+      function selectItem(id) {
+        selectedItemId = id;
+        removeObsAudioListeners();
+        const item = items[id];
+        if (!item) return;
+
+        E.textSettings.classList.add('hidden');
+        E.mediaSettings.classList.add('hidden');
+        E.chromaSettings.classList.add('hidden');
+        E.memeSettings.classList.add('hidden');
+        E.appearanceSoundSettings.classList.add('hidden');
+        E.audioPreviewBox.classList.add('hidden');
+        E.audioObsBox.classList.add('hidden');
+        if (E.mediaPreview) E.mediaPreview.innerHTML = '';
+        if (E.visibilityRow) E.visibilityRow.style.display = 'none';
+
+        if (item.type === 'audio' || item.type === 'tts') {
+          E.mediaSettings.classList.remove('hidden');
+          E.audioPreviewBox.classList.remove('hidden');
+          E.audioObsBox.classList.remove('hidden');
+          E.audioPreview.src = item.url;
+          E.audioObs.src = item.url;
+          E.audioObs.load(); E.audioPreview.load();
+          setupObsAudioListeners(id);
+          if (item.playing) E.audioObs.play().catch(() => {});
+        } else {
+          if (E.visibilityRow) E.visibilityRow.style.display = '';
+          if (E.fields.selectedVisible) E.fields.selectedVisible.checked = item.visible !== false;
+
+          if (item.type === 'text') {
+            E.textSettings.classList.remove('hidden');
+            E.fields.selectedText.value = item.text || '';
+            E.fields.selectedFontSize.value = item.style?.fontSize || 36;
+            E.fields.selectedColor.value = item.style?.color || '#fff';
+            E.fields.selectedBold.checked = item.style?.bold || false;
+            E.fields.selectedItalic.checked = item.style?.italic || false;
+            E.fields.selectedStrike.checked = item.style?.strike || false;
+          } else if (item.type === 'image' || item.type === 'video' || item.type === 'youtube') {
+            E.mediaSettings.classList.remove('hidden');
+            if (item.type !== 'youtube') {
+              E.chromaSettings.classList.remove('hidden');
+              if (E.fields.selectedChromaColor) E.fields.selectedChromaColor.value = item.chromaColor || '#00ff00';
+              if (E.fields.selectedChromaEnabled) E.fields.selectedChromaEnabled.checked = item.chromaEnabled === true;
+            }
+            E.appearanceSoundSettings.classList.remove('hidden');
+            if (E.fields.selectedAppearanceSound) E.fields.selectedAppearanceSound.value = item.appearanceSound || '';
+            if (E.fields.selectedAppearanceSoundObs) E.fields.selectedAppearanceSoundObs.checked = item.appearanceSoundObs === true;
+            if (item.type === 'video' && E.mediaPreview) {
+              E.mediaPreview.innerHTML = `<video src="${item.url}" controls style="width:100%; max-height:200px;"></video>`;
+            }
+            if (item.type === 'youtube' && E.mediaPreview) {
+              E.mediaPreview.innerHTML = `<iframe src="https://www.youtube.com/embed/${item.videoId}?autoplay=0&controls=0&rel=0&modestbranding=1&showinfo=0&enablejsapi=1" style="width:100%; height:200px;" frameborder="0"></iframe>`;
+            }
+          } else if (item.type === 'meme') {
+            E.memeSettings.classList.remove('hidden');
+            if (E.fields.selectedMemeVideo) E.fields.selectedMemeVideo.value = item.memeVideo || '';
+            if (E.fields.selectedMemeImage) E.fields.selectedMemeImage.value = item.memeImage || '';
+            if (E.fields.selectedMemeAudio) E.fields.selectedMemeAudio.value = item.memeAudio || '';
+            if (E.fields.selectedMemeHotkey) E.fields.selectedMemeHotkey.value = item.hotkey || '';
+            if (E.fields.selectedMemeChromaColor) E.fields.selectedMemeChromaColor.value = item.chromaColor || '#00ff00';
+            if (E.fields.selectedMemeChromaEnabled) E.fields.selectedMemeChromaEnabled.checked = item.chromaEnabled === true;
+            E.appearanceSoundSettings.classList.remove('hidden');
+            if (E.fields.selectedAppearanceSound) E.fields.selectedAppearanceSound.value = item.appearanceSound || '';
+            if (E.fields.selectedAppearanceSoundObs) E.fields.selectedAppearanceSoundObs.checked = item.appearanceSoundObs === true;
+          }
+        }
+        E.itemEditor.classList.remove('hidden');
+        updateSelectionHandles();
+      }
+
+      async function handleSaveItem() {
+        if (!selectedItemId) return;
+        const item = items[selectedItemId];
+        if (!item) return;
+        const upd = {
+          visible: E.fields.selectedVisible?.checked ?? true,
+          playing: item.playing || false
+        };
+        if (item.type === 'text') {
+          upd.text = E.fields.selectedText?.value || '';
+          upd.style = {
+            fontSize: Number(E.fields.selectedFontSize?.value) || 36,
+            color: E.fields.selectedColor?.value || '#ffffff',
+            bold: E.fields.selectedBold?.checked || false,
+            italic: E.fields.selectedItalic?.checked || false,
+            strike: E.fields.selectedStrike?.checked || false
+          };
+        }
+        if (item.type === 'image' || item.type === 'video') {
+          upd.chromaColor = E.fields.selectedChromaColor?.value || null;
+          upd.chromaEnabled = E.fields.selectedChromaEnabled?.checked || false;
+          upd.appearanceSound = E.fields.selectedAppearanceSound?.value?.trim() || null;
+          upd.appearanceSoundObs = E.fields.selectedAppearanceSoundObs?.checked || false;
+        }
+        if (item.type === 'meme') {
+          upd.memeVideo = E.fields.selectedMemeVideo?.value?.trim() || null;
+          upd.memeImage = E.fields.selectedMemeImage?.value?.trim() || null;
+          upd.memeAudio = E.fields.selectedMemeAudio?.value?.trim() || null;
+          upd.hotkey = E.fields.selectedMemeHotkey?.value?.trim().toUpperCase() || null;
+          upd.chromaColor = E.fields.selectedMemeChromaColor?.value || null;
+          upd.chromaEnabled = E.fields.selectedMemeChromaEnabled?.checked || false;
+          upd.appearanceSound = E.fields.selectedAppearanceSound?.value?.trim() || null;
+          upd.appearanceSoundObs = E.fields.selectedAppearanceSoundObs?.checked || false;
+        }
+        await update(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}`), upd);
+        showNotification('✅ Изменения сохранены');
+      }
+
+      async function handleDeleteItem() {
+        if (!selectedItemId) return;
+        const item = items[selectedItemId];
+        if (item && item.supabasePath) await deleteFileFromSupabase(item.supabasePath);
+        await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}`));
+        closeEditor();
+      }
+
+      async function handleCenterItem() {
+        if (!selectedItemId) return;
+        await update(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}/position`), { left: 0, top: 0 });
+      }
+
+      function closeEditor() {
+        selectedItemId = null;
+        removeObsAudioListeners();
+        E.itemEditor.classList.add('hidden');
+        updateSelectionHandles();
+        youtubePlayer = null;
+        youtubeReady = false;
+        document.querySelectorAll('.item-row.selected').forEach(row => row.classList.remove('selected'));
+      }
+
+      on(E.canvas, 'click', (e) => {
+        if (e.target === E.canvas || !e.target.closest('.canvas-item')) closeEditor();
+      });
+      on(E.saveItemButton, 'click', handleSaveItem);
+      on(E.deleteItemButton, 'click', handleDeleteItem);
+      on(E.centerItemButton, 'click', handleCenterItem);
+      on(E.closeEditorButton, 'click', closeEditor);
+
+      // ============ КОМНАТЫ ============
       async function initRooms() {
         const protectedSnap = await get(ref(db, `overlay/rooms/${PROTECTED_ROOM_ID}`));
         if (!protectedSnap.exists()) await set(ref(db, `overlay/rooms/${PROTECTED_ROOM_ID}`), { name: "Основная", createdAt: Date.now() });
@@ -1086,13 +1621,13 @@
           items = snap.val() || {};
           refreshItemList();
           refreshCanvas();
-          updateMemeHotkeyMap();
           if (mode === "overlay") refreshOverlay();
           if (selectedItemId && items[selectedItemId]) updateSelectionHandles();
           else if (!selectedItemId) closeEditor();
         });
         updateOverlayLink(roomId);
         renderRoomSlots(rooms);
+        watchOverlayStatus(roomId);
       }
 
       function updateOverlayLink(roomId) {
@@ -1119,538 +1654,14 @@
         catch(e) { alert('Скопируйте вручную: ' + E.overlayLink.value); }
       });
 
-      // ================== ХОЛСТ ==================
-      function updateSelectionHandles() {
-        document.querySelectorAll('.canvas-item .resize-handle, .canvas-item .rotate-handle').forEach(h => h.remove());
-        document.querySelectorAll('.canvas-item.selected').forEach(el => el.classList.remove('selected'));
-        if (selectedItemId && items[selectedItemId]) {
-          const el = document.querySelector(`.canvas-item[data-id="${selectedItemId}"]`);
-          if (el) {
-            el.classList.add('selected');
-            ['nw','ne','sw','se','n','s','w','e'].forEach(pos => {
-              const handle = document.createElement('div');
-              handle.className = 'resize-handle ' + pos;
-              handle.addEventListener('pointerdown', (e) => { e.stopPropagation(); resizeStart(e, pos); });
-              el.appendChild(handle);
-            });
-            const rotHandle = document.createElement('div');
-            rotHandle.className = 'rotate-handle';
-            rotHandle.addEventListener('pointerdown', rotateStart);
-            el.appendChild(rotHandle);
-          }
-        }
-      }
-
-      function buildCanvasItem(id, item) {
-        const el = document.createElement('div');
-        el.className = 'canvas-item';
-        el.dataset.id = id;
-        el.style.display = 'flex';
-        const left = (item.position?.left || 0) + OFFSET_X;
-        const top = (item.position?.top || 0) + OFFSET_Y;
-        el.style.left = left + 'px';
-        el.style.top = top + 'px';
-        el.style.width = (item.size?.width || 320) + 'px';
-        el.style.height = (item.size?.height || 240) + 'px';
-        el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
-        if (!item.visible) el.classList.add('invisible');
-
-        // Screenshare показываем иконкой (в оверлее будет видео)
-        if (item.type === 'screenshare') {
-          const placeholder = document.createElement('div');
-          placeholder.className = 'canvas-placeholder';
-          placeholder.innerHTML = '🖥️';
-          el.appendChild(placeholder);
-          el.addEventListener('pointerdown', canvasPointerDown);
-          return el;
-        }
-
-        if (item.type === 'audio' || item.type === 'tts') {
-          const placeholder = document.createElement('div');
-          placeholder.className = 'canvas-placeholder';
-          placeholder.innerHTML = '🎵';
-          el.appendChild(placeholder);
-          el.addEventListener('pointerdown', canvasPointerDown);
-          return el;
-        }
-
-        const previewUrl = item.type === 'meme'
-          ? (item.memeVideo || item.memeImage)
-          : (item.type === 'image' || item.type === 'video' ? item.url : null);
-
-        if (previewUrl) {
-          const tag = item.type === 'video' || (item.type === 'meme' && item.memeVideo) ? 'video' : 'img';
-          const inner = document.createElement(tag);
-          inner.src = previewUrl;
-          inner.style.width = '100%';
-          inner.style.height = '100%';
-          inner.style.objectFit = 'fill';
-          if (tag === 'video') {
-            inner.muted = true;
-            inner.loop = true;
-            inner.playsInline = true;
-            inner.autoplay = false;
-          }
-          inner.onerror = () => {
-            inner.style.display = 'none';
-            const broken = document.createElement('div');
-            broken.className = 'broken-image';
-            broken.textContent = '🖼️❌';
-            el.appendChild(broken);
-          };
-          el.appendChild(inner);
-        } else {
-          const placeholder = document.createElement('div');
-          placeholder.className = 'canvas-placeholder';
-          if (item.type === 'youtube') placeholder.innerHTML = '📺';
-          else placeholder.innerHTML = '📝';
-          el.appendChild(placeholder);
-        }
-        el.addEventListener('pointerdown', canvasPointerDown);
-        return el;
-      }
-
-      function refreshCanvas() {
-        if (!E.canvas) return;
-        const currentSelected = selectedItemId;
-        const existing = {};
-        E.canvas.querySelectorAll('.canvas-item').forEach(el => { existing[el.dataset.id] = el; });
-        const newIds = new Set(Object.keys(items));
-        for (const id in existing) { if (!newIds.has(id)) existing[id].remove(); }
-        Object.entries(items).forEach(([id, item]) => {
-          if (!item) return;
-          let el = existing[id];
-          if (!el) { el = buildCanvasItem(id, item); E.canvas.appendChild(el); }
-          else {
-            const left = (item.position?.left || 0) + OFFSET_X;
-            const top = (item.position?.top || 0) + OFFSET_Y;
-            el.style.left = left + 'px';
-            el.style.top = top + 'px';
-            el.style.width = (item.size?.width || 320) + 'px';
-            el.style.height = (item.size?.height || 240) + 'px';
-            el.style.transform = `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`;
-            el.style.display = 'flex';
-            el.classList.toggle('invisible', !item.visible);
-            if (item.type === 'screenshare' || item.type === 'audio' || item.type === 'tts' || item.type === 'youtube' || item.type === 'text') {
-              // только обновляем видимость
-            } else {
-              const inner = el.querySelector('img, video');
-              const previewUrl = item.type === 'meme'
-                ? (item.memeVideo || item.memeImage)
-                : (item.type === 'image' || item.type === 'video' ? item.url : null);
-              if (previewUrl && inner && inner.src !== previewUrl) {
-                inner.src = previewUrl;
-              } else if (!previewUrl && inner) {
-                inner.remove();
-                const placeholder = document.createElement('div');
-                placeholder.className = 'canvas-placeholder';
-                if (item.type === 'youtube') placeholder.innerHTML = '📺';
-                else placeholder.innerHTML = '📝';
-                el.appendChild(placeholder);
-              }
-            }
-          }
-        });
-        if (currentSelected && items[currentSelected]) { selectedItemId = currentSelected; updateSelectionHandles(); }
-        youtubePlayer = null; youtubeReady = false; updateMemeHotkeyMap();
-      }
-
-      function getCanvasCoords(e) { if (!E.canvas) return { x: 0, y: 0 }; const rect = E.canvas.getBoundingClientRect(); return { x: (e.clientX - rect.left) / currentScale, y: (e.clientY - rect.top) / currentScale }; }
-      function highlightItem(id) { if (selectedItemId === id) return; selectedItemId = id; updateSelectionHandles(); }
-
-      function getResizeDirectionFromEdge(el, coords) {
-        const rect = el.getBoundingClientRect();
-        const x = coords.x, y = coords.y;
-        const threshold = 12;
-        let dir = '';
-        if (Math.abs(y - rect.top) < threshold) dir += 'n';
-        else if (Math.abs(y - rect.bottom) < threshold) dir += 's';
-        if (Math.abs(x - rect.left) < threshold) dir += 'w';
-        else if (Math.abs(x - rect.right) < threshold) dir += 'e';
-        return dir;
-      }
-
-      function canvasPointerDown(e) {
-        const el = e.currentTarget;
-        const id = el.dataset.id;
-        if (!id) return;
-        e.preventDefault();
-        const coords = getCanvasCoords(e);
-        const dir = getResizeDirectionFromEdge(el, coords);
-        if (dir) { e.stopPropagation(); highlightItem(id); resizeStart(e, dir); return; }
-        highlightItem(id);
-        dragState = { id, startX: coords.x, startY: coords.y, origLeft: parseFloat(el.style.left), origTop: parseFloat(el.style.top), el };
-        el.setPointerCapture(e.pointerId);
-        window.addEventListener('pointermove', canvasPointerMove);
-        window.addEventListener('pointerup', canvasPointerUp, { once: true });
-      }
-
-      function canvasPointerMove(e) {
-        if (!dragState) return;
-        const coords = getCanvasCoords(e);
-        const dx = coords.x - dragState.startX;
-        const dy = coords.y - dragState.startY;
-        let newLeft = dragState.origLeft + dx;
-        let newTop = dragState.origTop + dy;
-        newLeft = Math.max(0, Math.min(CANVAS_WIDTH, newLeft));
-        newTop = Math.max(0, Math.min(CANVAS_HEIGHT, newTop));
-        if (e.shiftKey) {
-          const threshold = 20;
-          const sceneLeft = OFFSET_X;
-          const sceneRight = OFFSET_X + STAGE_WIDTH;
-          const sceneTop = OFFSET_Y;
-          const sceneBottom = OFFSET_Y + STAGE_HEIGHT;
-          if (Math.abs(newLeft - sceneLeft) < threshold) newLeft = sceneLeft;
-          else if (Math.abs(newLeft - sceneRight) < threshold) newLeft = sceneRight;
-          if (Math.abs(newTop - sceneTop) < threshold) newTop = sceneTop;
-          else if (Math.abs(newTop - sceneBottom) < threshold) newTop = sceneBottom;
-        }
-        dragState.el.style.left = newLeft + 'px';
-        dragState.el.style.top = newTop + 'px';
-        try { update(ref(db, `overlay/rooms/${activeRoomId}/items/${dragState.id}/position`), { left: newLeft - OFFSET_X, top: newTop - OFFSET_Y }); } catch(e) {}
-      }
-
-      function canvasPointerUp() {
-        if (!dragState) return;
-        const leftOnCanvas = parseFloat(dragState.el.style.left);
-        const topOnCanvas = parseFloat(dragState.el.style.top);
-        update(ref(db, `overlay/rooms/${activeRoomId}/items/${dragState.id}/position`), { left: leftOnCanvas - OFFSET_X, top: topOnCanvas - OFFSET_Y });
-        dragState = null;
-        window.removeEventListener('pointermove', canvasPointerMove);
-      }
-
-      function resizeStart(e, direction) {
-        const el = e.currentTarget?.parentElement ? e.currentTarget.parentElement : e.currentTarget;
-        const id = el.dataset.id;
-        if (!id) return;
-        e.stopPropagation();
-        const coords = getCanvasCoords(e);
-        const origW = parseFloat(el.style.width);
-        const origH = parseFloat(el.style.height);
-        resizeState = {
-          id, el, dir: direction,
-          startX: coords.x, startY: coords.y,
-          origW, origH,
-          origLeft: parseFloat(el.style.left), origTop: parseFloat(el.style.top)
-        };
-        if (e.pointerId !== undefined) el.setPointerCapture(e.pointerId);
-        window.addEventListener('pointermove', resizeMove);
-        window.addEventListener('pointerup', resizeEnd, { once: true });
-        el.style.borderStyle = ''; el.style.borderColor = '';
-      }
-
-      function resizeMove(e) {
-        if (!resizeState) return;
-        const coords = getCanvasCoords(e);
-        const dx = coords.x - resizeState.startX;
-        const dy = coords.y - resizeState.startY;
-        let newW = resizeState.origW, newH = resizeState.origH;
-        let newLeft = resizeState.origLeft, newTop = resizeState.origTop;
-        const dir = resizeState.dir;
-
-        let fixedLeft = false, fixedRight = false, fixedTop = false, fixedBottom = false;
-        if (dir.includes('e')) { fixedLeft = true; }
-        if (dir.includes('w')) { fixedRight = true; }
-        if (dir.includes('s')) { fixedTop = true; }
-        if (dir.includes('n')) { fixedBottom = true; }
-
-        if (dir.includes('e')) newW = resizeState.origW + dx;
-        if (dir.includes('w')) newW = resizeState.origW - dx;
-        if (dir.includes('s')) newH = resizeState.origH + dy;
-        if (dir.includes('n')) newH = resizeState.origH - dy;
-
-        if (!e.shiftKey) {
-          const origRatio = resizeState.origW / resizeState.origH;
-          if (dir === 'e' || dir === 'w') { newH = newW / origRatio; }
-          else if (dir === 'n' || dir === 's') { newW = newH * origRatio; }
-          else {
-            const dw = Math.abs(newW - resizeState.origW);
-            const dh = Math.abs(newH - resizeState.origH);
-            if (dw > dh) { newH = newW / origRatio; }
-            else { newW = newH * origRatio; }
-          }
-        }
-        newW = Math.max(20, newW);
-        newH = Math.max(20, newH);
-        if (fixedLeft) { newLeft = resizeState.origLeft + (newW - resizeState.origW) / 2; }
-        else if (fixedRight) { newLeft = resizeState.origLeft - (newW - resizeState.origW) / 2; }
-        if (fixedTop) { newTop = resizeState.origTop + (newH - resizeState.origH) / 2; }
-        else if (fixedBottom) { newTop = resizeState.origTop - (newH - resizeState.origH) / 2; }
-
-        resizeState.el.style.width = newW + 'px';
-        resizeState.el.style.height = newH + 'px';
-        resizeState.el.style.left = newLeft + 'px';
-        resizeState.el.style.top = newTop + 'px';
-
-        const item = items[resizeState.id];
-        if (item) {
-          item.size = { width: newW, height: newH };
-          item.position = { left: newLeft - OFFSET_X, top: newTop - OFFSET_Y };
-          update(ref(db, `overlay/rooms/${activeRoomId}/items/${resizeState.id}`), { size: item.size, position: item.position });
-        }
-      }
-
-      function resizeEnd() {
-        if (!resizeState) return;
-        const { el } = resizeState;
-        el.style.borderStyle = ''; el.style.borderColor = '';
-        resizeState = null;
-        window.removeEventListener('pointermove', resizeMove);
-      }
-
-      function rotateStart(e) {
-        const el = e.currentTarget.parentElement;
-        const id = el.dataset.id;
-        if (!id) return;
-        e.stopPropagation();
-        const centerX = parseFloat(el.style.left);
-        const centerY = parseFloat(el.style.top);
-        rotateState = { id, el, centerX, centerY };
-        e.currentTarget.setPointerCapture(e.pointerId);
-        window.addEventListener('pointermove', rotateMove);
-        window.addEventListener('pointerup', rotateEnd, { once: true });
-      }
-
-      function rotateMove(e) {
-        if (!rotateState) return;
-        const coords = getCanvasCoords(e);
-        const dx = coords.x - rotateState.centerX;
-        const dy = coords.y - rotateState.centerY;
-        let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
-        if (e.shiftKey) { const snap = 15; angle = Math.round(angle / snap) * snap; }
-        angle = Math.round(angle);
-        rotateState.el.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
-        try { update(ref(db, `overlay/rooms/${activeRoomId}/items/${rotateState.id}`), { rotation: angle }); } catch(e) {}
-      }
-
-      function rotateEnd() {
-        if (!rotateState) return;
-        const match = rotateState.el.style.transform.match(/rotate\(([-\d.]+)deg\)/);
-        const newAngle = match ? parseFloat(match[1]) : 0;
-        update(ref(db, `overlay/rooms/${activeRoomId}/items/${rotateState.id}`), { rotation: newAngle });
-        rotateState = null;
-        window.removeEventListener('pointermove', rotateMove);
-      }
-
-      async function loadYouTubeAPI() {
-        if (window.YT && window.YT.Player) return true;
-        return new Promise((resolve) => {
-          const tag = document.createElement('script');
-          tag.src = "https://www.youtube.com/iframe_api";
-          const firstScriptTag = document.getElementsByTagName('script')[0];
-          firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-          window.onYouTubeIframeAPIReady = () => resolve(true);
-        });
-      }
-
-      // ================== ХРОМАКЕЙ ==================
-      function applyChromaFilter(el, colorHex, id, enabled) {
-        if (!enabled || !colorHex) {
-          el.style.filter = '';
-          return;
-        }
-        createChromaFilter(colorHex, id);
-        el.style.filter = `url(#chroma-filter-${id})`;
-      }
-
-      on(E.pickChromaColor, 'click', () => { E.fields.selectedChromaColor?.click(); });
-      on(E.pickMemeChromaColor, 'click', () => { E.fields.selectedMemeChromaColor?.click(); });
-
-      // ================== ЗВУК ПОЯВЛЕНИЯ ==================
-      function playAppearanceSound(item) {
-        if (!item.appearanceSound) return;
-        const audio = new Audio(item.appearanceSound);
-        audio.volume = item.appearanceSoundObs ? 1 : 0;
-        audio.play().catch(() => {});
-        if (item.appearanceSoundObs) {
-          const obsAudio = document.createElement('audio');
-          obsAudio.src = item.appearanceSound;
-          obsAudio.autoplay = true;
-          obsAudio.muted = false;
-          obsAudio.volume = 1;
-          obsAudio.style.display = 'none';
-          document.body.appendChild(obsAudio);
-          obsAudio.addEventListener('ended', () => obsAudio.remove());
-        }
-      }
-
-      // ================== РЕДАКТОР ==================
-      function selectItem(id) {
-        selectedItemId = id;
-        removeObsAudioListeners();
-        const item = items[id];
-        if (!item) return;
-
-        E.textSettings.classList.add('hidden');
-        E.mediaSettings.classList.add('hidden');
-        E.chromaSettings.classList.add('hidden');
-        E.memeSettings.classList.add('hidden');
-        E.appearanceSoundSettings.classList.add('hidden');
-        E.audioPreviewBox.classList.add('hidden');
-        E.audioObsBox.classList.add('hidden');
-        if (E.mediaPreview) E.mediaPreview.innerHTML = '';
-
-        if (E.visibilityRow) E.visibilityRow.style.display = 'none';
-
-        if (item.type === 'audio' || item.type === 'tts') {
-          E.mediaSettings.classList.remove('hidden');
-          E.audioPreviewBox.classList.remove('hidden');
-          E.audioObsBox.classList.remove('hidden');
-          E.audioPreview.src = item.url;
-          E.audioObs.src = item.url;
-          E.audioObs.load(); E.audioPreview.load();
-          setupObsAudioListeners(id);
-          if (item.playing) E.audioObs.play().catch(() => {});
-        } else if (item.type === 'screenshare') {
-          if (E.visibilityRow) E.visibilityRow.style.display = '';
-          if (E.fields.selectedVisible) E.fields.selectedVisible.checked = item.visible !== false;
-          // минимум полей
-        } else {
-          if (E.visibilityRow) E.visibilityRow.style.display = '';
-          if (E.fields.selectedVisible) E.fields.selectedVisible.checked = item.visible !== false;
-
-          if (item.type === 'text') {
-            E.textSettings.classList.remove('hidden');
-            E.fields.selectedText.value = item.text || '';
-            E.fields.selectedFontSize.value = item.style?.fontSize || 36;
-            E.fields.selectedColor.value = item.style?.color || '#fff';
-            E.fields.selectedBold.checked = item.style?.bold || false;
-            E.fields.selectedItalic.checked = item.style?.italic || false;
-            E.fields.selectedStrike.checked = item.style?.strike || false;
-          } else if (item.type === 'image' || item.type === 'video') {
-            E.mediaSettings.classList.remove('hidden');
-            E.chromaSettings.classList.remove('hidden');
-            if (E.fields.selectedChromaColor) E.fields.selectedChromaColor.value = item.chromaColor || '#00ff00';
-            if (E.fields.selectedChromaEnabled) E.fields.selectedChromaEnabled.checked = item.chromaEnabled === true;
-            if (item.type === 'video' && E.mediaPreview) {
-              E.mediaPreview.innerHTML = `<video src="${item.url}" controls style="width:100%; max-height:200px;"></video>`;
-            }
-            E.appearanceSoundSettings.classList.remove('hidden');
-            if (E.fields.selectedAppearanceSound) E.fields.selectedAppearanceSound.value = item.appearanceSound || '';
-            if (E.fields.selectedAppearanceSoundObs) E.fields.selectedAppearanceSoundObs.checked = item.appearanceSoundObs === true;
-          } else if (item.type === 'meme') {
-            E.memeSettings.classList.remove('hidden');
-            if (E.fields.selectedMemeVideo) E.fields.selectedMemeVideo.value = item.memeVideo || '';
-            if (E.fields.selectedMemeImage) E.fields.selectedMemeImage.value = item.memeImage || '';
-            if (E.fields.selectedMemeAudio) E.fields.selectedMemeAudio.value = item.memeAudio || '';
-            if (E.fields.selectedMemeHotkey) E.fields.selectedMemeHotkey.value = item.hotkey || '';
-            if (E.fields.selectedMemeChromaColor) E.fields.selectedMemeChromaColor.value = item.chromaColor || '#00ff00';
-            if (E.fields.selectedMemeChromaEnabled) E.fields.selectedMemeChromaEnabled.checked = item.chromaEnabled === true;
-            E.appearanceSoundSettings.classList.remove('hidden');
-            if (E.fields.selectedAppearanceSound) E.fields.selectedAppearanceSound.value = item.appearanceSound || '';
-            if (E.fields.selectedAppearanceSoundObs) E.fields.selectedAppearanceSoundObs.checked = item.appearanceSoundObs === true;
-          } else if (item.type === 'youtube') {
-            E.mediaSettings.classList.remove('hidden');
-            const iframe = document.createElement('iframe');
-            iframe.src = `https://www.youtube.com/embed/${item.videoId}?autoplay=0&controls=0&rel=0&modestbranding=1&showinfo=0&enablejsapi=1`;
-            iframe.style.width = '100%'; iframe.style.height = '200px';
-            if (E.mediaPreview) {
-              E.mediaPreview.innerHTML = '';
-              E.mediaPreview.appendChild(iframe);
-            }
-          }
-        }
-        E.itemEditor.classList.remove('hidden');
-        updateSelectionHandles();
-      }
-
-      async function handleSaveItem() {
-        if (!selectedItemId) return;
-        const item = items[selectedItemId];
-        if (!item) return;
-        const upd = {
-          visible: E.fields.selectedVisible?.checked ?? true,
-          playing: item.playing || false
-        };
-        if (item.type === 'text') {
-          upd.text = E.fields.selectedText?.value || '';
-          upd.style = {
-            fontSize: Number(E.fields.selectedFontSize?.value) || 36,
-            color: E.fields.selectedColor?.value || '#ffffff',
-            bold: E.fields.selectedBold?.checked || false,
-            italic: E.fields.selectedItalic?.checked || false,
-            strike: E.fields.selectedStrike?.checked || false
-          };
-        }
-        if (item.type === 'image' || item.type === 'video') {
-          upd.chromaColor = E.fields.selectedChromaColor?.value || null;
-          upd.chromaEnabled = E.fields.selectedChromaEnabled?.checked || false;
-          upd.appearanceSound = E.fields.selectedAppearanceSound?.value?.trim() || null;
-          upd.appearanceSoundObs = E.fields.selectedAppearanceSoundObs?.checked || false;
-        }
-        if (item.type === 'meme') {
-          upd.memeVideo = E.fields.selectedMemeVideo?.value?.trim() || null;
-          upd.memeImage = E.fields.selectedMemeImage?.value?.trim() || null;
-          upd.memeAudio = E.fields.selectedMemeAudio?.value?.trim() || null;
-          upd.hotkey = E.fields.selectedMemeHotkey?.value?.trim().toUpperCase() || null;
-          upd.chromaColor = E.fields.selectedMemeChromaColor?.value || null;
-          upd.chromaEnabled = E.fields.selectedMemeChromaEnabled?.checked || false;
-          upd.appearanceSound = E.fields.selectedAppearanceSound?.value?.trim() || null;
-          upd.appearanceSoundObs = E.fields.selectedAppearanceSoundObs?.checked || false;
-        }
-        // Для screenshare сохраняем только visible
-        await update(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}`), upd);
-        showNotification('✅ Изменения сохранены');
-      }
-
-      async function handleDeleteItem() {
-        if (!selectedItemId) return;
-        const item = items[selectedItemId];
-        if (item?.type === 'screenshare') {
-          if (screenStream) {
-            screenStream.getTracks().forEach(t => t.stop());
-            screenStream = null;
-            E.screenShareButton.textContent = '🖥️ Демонстрация экрана';
-          }
-        }
-        if (item && item.supabasePath) await deleteFileFromSupabase(item.supabasePath);
-        await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}`));
-        closeEditor();
-      }
-
-      async function handleCenterItem() {
-        if (!selectedItemId) return;
-        await update(ref(db, `overlay/rooms/${activeRoomId}/items/${selectedItemId}/position`), { left: 0, top: 0 });
-      }
-
-      function closeEditor() {
-        selectedItemId = null;
-        removeObsAudioListeners();
-        E.itemEditor.classList.add('hidden');
-        updateSelectionHandles();
-        youtubePlayer = null;
-        youtubeReady = false;
-      }
-
-      on(E.canvas, 'click', (e) => { if (e.target === E.canvas || !e.target.closest('.canvas-item')) closeEditor(); });
-      on(E.saveItemButton, 'click', handleSaveItem);
-      on(E.deleteItemButton, 'click', handleDeleteItem);
-      on(E.centerItemButton, 'click', handleCenterItem);
-      on(E.closeEditorButton, 'click', closeEditor);
-
-      function enableDragDrop() {
-        if (window._dragDropEnabled) return;
-        window._dragDropEnabled = true;
-        document.body.addEventListener('dragover', e => { e.preventDefault(); if (E.controlInterface && !E.controlInterface.classList.contains('hidden')) document.body.style.outline = '3px dashed #9147ff'; });
-        document.body.addEventListener('dragleave', () => { document.body.style.outline = ''; });
-        document.body.addEventListener('drop', async e => {
-          e.preventDefault(); document.body.style.outline = '';
-          if (E.controlInterface?.classList.contains('hidden')) return;
-          if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
-          const files = e.dataTransfer?.files;
-          if (!files?.length) return;
-          for (const file of files) await handleFileSelected(file);
-        });
-      }
-
-      // ================== ОВЕРЛЕЙ ==================
+      // ============ ОВЕРЛЕЙ ============
       function refreshOverlay() {
         if (!E.stageElement) return;
         E.stageElement.innerHTML = "";
         Object.entries(items).forEach(([id, item]) => {
           if (!item) return;
-          if (!item.visible && item.type !== 'audio' && item.type !== 'tts' && item.type !== 'meme' && item.type !== 'screenshare') return;
-          if ((item.type === 'meme' || item.type === 'screenshare') && !item.visible) return;
+          if (!item.visible && item.type !== 'audio' && item.type !== 'tts' && item.type !== 'meme') return;
+          if (item.type === 'meme' && !item.visible) return;
 
           const el = document.createElement("div");
           el.className = "overlay-item";
@@ -1702,7 +1713,9 @@
               inner.autoplay = false; inner.loop = false; inner.muted = false; inner.volume = item.volume || 1;
               inner.style.width = '100%'; inner.style.height = '100%'; inner.playsInline = true;
               if (item.chromaEnabled) applyChromaFilter(inner, item.chromaColor, id, true);
-              inner.addEventListener('ended', () => handleMemeEnded(id));
+              inner.addEventListener('ended', () => {
+                update(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`), { playing: false, visible: false });
+              });
               if (item.playing) inner.play().catch(() => {});
               el.appendChild(inner);
             } else if (item.memeImage) {
@@ -1715,22 +1728,14 @@
                 const audioEl = document.createElement('audio');
                 audioEl.src = item.memeAudio;
                 audioEl.controls = false; audioEl.autoplay = false; audioEl.loop = false; audioEl.muted = false; audioEl.volume = item.volume || 1;
-                audioEl.preload = 'auto'; audioEl.addEventListener('ended', () => handleMemeEnded(id));
+                audioEl.preload = 'auto';
+                audioEl.addEventListener('ended', () => {
+                  update(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`), { playing: false, visible: false });
+                });
                 el.appendChild(audioEl);
                 if (item.playing) audioEl.play().catch(() => {});
               }
             }
-          } else if (item.type === 'screenshare') {
-            inner = document.createElement('video');
-            inner.style.width = '100%'; inner.style.height = '100%';
-            inner.autoplay = true;
-            inner.muted = true;
-            inner.loop = false;
-            if (screenStream) {
-              inner.srcObject = screenStream;
-              inner.play().catch(() => {});
-            }
-            el.appendChild(inner);
           } else if (item.type === 'youtube') {
             inner = document.createElement('iframe');
             inner.src = item.url;
@@ -1749,54 +1754,6 @@
           }
           el.addEventListener('pointerdown', overlayPointerDown);
           E.stageElement.appendChild(el);
-        });
-      }
-
-      function refreshItemList() {
-        if (!E.itemList) return;
-        E.itemList.innerHTML = "";
-        Object.entries(items).forEach(([id, item]) => {
-          if (!item) return;
-          const row = document.createElement("div");
-          row.className = "item-row";
-
-          let previewHtml = '';
-          if (item.type === 'screenshare') {
-            previewHtml = `<span style="width:48px; text-align:center;">🖥️</span>`;
-          } else {
-            const previewUrl = item.type === 'meme' ? (item.memeVideo || item.memeImage || item.url) : item.url;
-            if (item.type === 'image' || item.type === 'video' || item.type === 'meme') {
-              previewHtml = `<img class="item-thumb" src="${previewUrl}" onerror="this.style.display='none'">`;
-            } else if (item.type === 'text') {
-              const words = (item.text || '').split(' ').slice(0, 3).join(' ');
-              previewHtml = `<span style="width:48px; text-align:center;">${words || '…'}</span>`;
-            } else if (item.type === 'audio' || item.type === 'tts') {
-              previewHtml = `<span style="width:48px; text-align:center;">🎵</span>`;
-            } else {
-              previewHtml = `<span style="width:48px; text-align:center;">📺</span>`;
-            }
-          }
-
-          row.innerHTML = `
-            ${previewHtml}
-            <div><strong>${item.title||id}</strong><br/><small>${item.type}${item.hotkey ? ' ['+item.hotkey+']' : ''}</small></div>
-            <div style="display:flex; gap:6px;">
-              <button class="edit-item">Ред.</button>
-              <button class="delete-item danger">Удал.</button>
-            </div>`;
-
-          row.querySelector('.edit-item').onclick = () => selectItem(id);
-          row.querySelector('.delete-item').onclick = async () => {
-            if (item.type === 'screenshare' && screenStream) {
-              screenStream.getTracks().forEach(t => t.stop());
-              screenStream = null;
-              E.screenShareButton.textContent = '🖥️ Демонстрация экрана';
-            }
-            if (item && item.supabasePath) await deleteFileFromSupabase(item.supabasePath);
-            await remove(ref(db, `overlay/rooms/${activeRoomId}/items/${id}`));
-            if (selectedItemId === id) closeEditor();
-          };
-          E.itemList.appendChild(row);
         });
       }
 
@@ -1838,6 +1795,7 @@
         window.removeEventListener('pointermove', overlayPointerMove);
       }
 
+      // ============ ОБЩИЕ ОБРАБОТЧИКИ ============
       function showMode(m) {
         if (!E.overlayContainer || !E.controlPanel || !E.modePicker) return;
         if (m === "overlay") {
@@ -1848,6 +1806,8 @@
             itemsRef = ref(db, `overlay/rooms/${roomFromUrl}/items`);
             if (itemsListener) itemsListener();
             itemsListener = onValue(itemsRef, (snap) => { items = snap.val() || {}; refreshOverlay(); });
+            // heartbeat в оверлее
+            setInterval(() => set(ref(db, `overlay/status/${roomFromUrl}/heartbeat`), Date.now()), 2000);
           }
         } else if (m === "control") {
           E.overlayContainer.style.display = "none"; E.controlPanel.style.display = "block"; E.modePicker.style.display = "none";
@@ -1857,6 +1817,7 @@
         }
       }
 
+      // Вход
       on(E.loginButton, 'click', async () => {
         if (E.secretInput && E.secretInput.value.trim() === SECRET) {
           E.secretPrompt.classList.add('hidden'); E.controlInterface.classList.remove('hidden');
@@ -1867,12 +1828,41 @@
             if (firstId) switchToRoom(firstId);
           }
           scaleCanvas();
-          if (!window._dragDropEnabled) enableDragDrop();
+          enableDragDrop();
         } else alert('Неверный ключ');
       });
       on(E.logoutButton, 'click', () => { E.secretPrompt.classList.remove('hidden'); E.controlInterface.classList.add('hidden'); });
       on(E.addItemButton, 'click', handleAddItem);
 
+      function enableDragDrop() {
+        if (window._dragDropEnabled) return;
+        window._dragDropEnabled = true;
+        document.body.addEventListener('dragover', e => { e.preventDefault(); if (E.controlInterface && !E.controlInterface.classList.contains('hidden')) document.body.style.outline = '3px dashed #9147ff'; });
+        document.body.addEventListener('dragleave', () => { document.body.style.outline = ''; });
+        document.body.addEventListener('drop', async e => {
+          e.preventDefault(); document.body.style.outline = '';
+          if (E.controlInterface?.classList.contains('hidden')) return;
+          if (!itemsRef) { showNotification('❌ Сначала выберите комнату'); return; }
+          const files = e.dataTransfer?.files;
+          if (!files?.length) return;
+          for (const file of files) {
+            const fileType = getFileType(file);
+            if (!fileType) continue;
+            try {
+              const { url, path } = await uploadFileToSupabase(file);
+              const item = createDefaultItem(fileType, { url, fileName: file.name, file: true });
+              item.supabasePath = path; item.visible = fileType !== 'audio';
+              await push(itemsRef, item);
+            } catch (e) { showNotification('❌ Ошибка загрузки: ' + e.message); }
+          }
+          showNotification('✅ Файлы добавлены');
+        });
+      }
+
+      on(E.pickChromaColor, 'click', () => { E.fields.selectedChromaColor?.click(); });
+      on(E.pickMemeChromaColor, 'click', () => { E.fields.selectedMemeChromaColor?.click(); });
+
+      // Запуск
       showMode(mode);
       window.addEventListener('resize', scaleCanvas);
       scaleCanvas();
